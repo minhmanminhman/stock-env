@@ -1,0 +1,27 @@
+{
+    "python.pythonPath": "C:\\Users\\manbnm\\Miniconda3\\envs\\beam_env\\python.exe",
+    "editor.rulers": [
+        80
+    ],
+    "editor.occurrencesHighlight": true,
+    "[typescript]": {
+        "editor.autoClosingBrackets": "languageDefined"
+    },
+    "[python]": {
+        "editor.autoClosingBrackets": "languageDefined"
+    },
+    "editor.formatOnSave": false,
+    "python.formatting.autopep8Args": ["--max-line-length", "120", "--experimental"],
+    "python.testing.pytestArgs": [
+        "test"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.nosetestsEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "terminal.integrated.profiles.windows": {
+        "Cmder": {
+          "path": "${env:windir}\\System32\\cmd.exe",
+          "args": ["/k", "C:\\Users\\manbnm\\Downloads\\cmder\\vendor\\bin\\vscode_init.cmd"]
+        }
+      },
+}
