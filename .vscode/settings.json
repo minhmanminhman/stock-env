@@ -1,5 +1,4 @@
 {
-    "python.pythonPath": "C:\\Users\\manbnm\\Miniconda3\\envs\\beam_env\\python.exe",
     "editor.rulers": [
         80
     ],
@@ -18,10 +17,4 @@
     "python.testing.unittestEnabled": false,
     "python.testing.nosetestsEnabled": false,
     "python.testing.pytestEnabled": true,
-    "terminal.integrated.profiles.windows": {
-        "Cmder": {
-          "path": "${env:windir}\\System32\\cmd.exe",
-          "args": ["/k", "C:\\Users\\manbnm\\Downloads\\cmder\\vendor\\bin\\vscode_init.cmd"]
-        }
-      },
 }
