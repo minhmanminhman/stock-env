@@ -18,7 +18,8 @@ class SingleStockEnv(gym.Env):
         df: pd.DataFrame,
         tick_size: float = 0.1,
         lot_size: int = 100,
-        max_lot: int = 5,
+        max_trade_lot: int = 5,
+        max_lot: int = 10,
         kappa: float = 1e-4,
         init_cash: float = 5e4,
     ):
@@ -31,14 +32,16 @@ class SingleStockEnv(gym.Env):
         # market params
         self.tick_size = tick_size
         self.lot_size = lot_size
-        self.max_lot = max_lot
+        self.max_trade_lot = max_trade_lot
+        self.max_quantity = max_lot * lot_size
+        self.min_quantity = - max_lot * lot_size
         self.kappa = kappa
         
         # portfolio params
         self.init_cash = init_cash
         self.cash = None
         self.nav = None
-        self.shares = self.lot_size * np.arange(-max_lot, max_lot+1)
+        self.shares = self.lot_size * np.arange(-max_trade_lot, max_trade_lot+1)
 
         # spaces
         self.n_action = len(self.shares)
@@ -51,13 +54,17 @@ class SingleStockEnv(gym.Env):
         self._current_tick = None
         self.done = None
         self.total_reward = None
-        self.total_profit = None
+        # self.total_profit = None
         self.quantity = None
         self.history = None
     
     @property
     def portfolio_value(self):
         return self.nav + self.cash
+    
+    @property
+    def total_profit(self):
+        return self.portfolio_value - self.init_cash
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -67,7 +74,7 @@ class SingleStockEnv(gym.Env):
         self._current_tick = self._start_tick
         self.done = False
         self.total_reward = 0
-        self.total_profit = 0  # unit
+        # self.total_profit = 0  # unit
         self.cash = self.init_cash
         self.nav = 0
         self.quantity = 0
@@ -86,18 +93,19 @@ class SingleStockEnv(gym.Env):
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
         self._current_tick += 1
         delta_shares = self._decode_action(action)
-        self.quantity = self._get_prev_quantity() + delta_shares
+        quantity = self._get_prev_quantity() + delta_shares
+        self.quantity = np.clip(quantity, self.min_quantity, self.max_quantity)
+
+        # print(f"{self._get_prev_quantity()} + {delta_shares} = {self.quantity}")
         
         # calculate reward
         delta_vt = self._delta_vt(delta_shares)
-        self.total_profit += delta_vt
         step_reward = self._calculate_reward(delta_vt)
         self.total_reward += step_reward
         
         self._update_portfolio(delta_shares)
         
         # always update history last
-        holding = self._get_prev_quantity() + delta_shares
         info = dict(
             actions = action,
             quantity = self.quantity,
@@ -109,7 +117,7 @@ class SingleStockEnv(gym.Env):
             cash = self.cash,
         )
         self._update_history(info)
-
+        # print(f"next_obs: {self._get_observation()}")
         return self._get_observation(), step_reward, self._is_done(), info
 
     def _get_observation(self) -> np.ndarray:
