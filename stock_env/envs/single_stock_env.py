@@ -80,6 +80,7 @@ class SingleStockEnv(gym.Env):
         self.quantity = 0
         self.history = {
             'actions': [],
+            'delta_shares': [],
             'quantity': [],
             'delta_vt': [],
             'total_reward': [],
@@ -93,9 +94,12 @@ class SingleStockEnv(gym.Env):
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
         self._current_tick += 1
         delta_shares = self._decode_action(action)
+        
+        # enviroment constraint
         quantity = self._get_prev_quantity() + delta_shares
         self.quantity = np.clip(quantity, self.min_quantity, self.max_quantity)
-
+        delta_shares = self.quantity - self._get_prev_quantity()
+        
         # print(f"{self._get_prev_quantity()} + {delta_shares} = {self.quantity}")
         
         # calculate reward
@@ -108,6 +112,7 @@ class SingleStockEnv(gym.Env):
         # always update history last
         info = dict(
             actions = action,
+            delta_shares = delta_shares,
             quantity = self.quantity,
             delta_vt = delta_vt,
             total_reward = self.total_reward,
