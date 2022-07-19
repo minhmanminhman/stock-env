@@ -46,7 +46,12 @@ class SingleStockEnv(gym.Env):
         # spaces
         self.n_action = len(self.shares)
         self.action_space = spaces.Discrete(self.n_action)
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2,), dtype=np.float32)
+        self.observation_space = spaces.Box(
+            low=-np.inf, 
+            high=np.inf, 
+            shape=(2,), 
+            dtype=np.float64
+        )
 
         # episode
         self._start_tick = 0
@@ -127,10 +132,10 @@ class SingleStockEnv(gym.Env):
 
     def _get_observation(self) -> np.ndarray:
         # process window
-        price = self.df.iloc[self._current_tick].to_numpy()
+        price = self.df.iloc[self._current_tick].item()
         quantity = self._get_prev_quantity()
 
-        return np.concatenate([price, np.asarray([quantity])])
+        return np.asarray([float(price), float(quantity)])
     
     def _get_prev_quantity(self) -> int:
         try:
