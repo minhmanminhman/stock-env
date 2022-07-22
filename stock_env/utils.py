@@ -14,17 +14,25 @@ from empyrical import (
     value_at_risk
 )
 
-def plot_trade_log(data: pd.DataFrame, ax):
+def plot_trade_log(data: pd.DataFrame):
     buy = data[data['delta_shares'] > 0]
     sell = data[data['delta_shares'] < 0]
-
-    ax.grid(True)
-    ax.set_title('Trade log')
+    
+    fig, ax = plt.subplots(2, 1, figsize=(15,8))
+    
+    ax[0].grid(True)
+    ax[0].set_title('Trade log')
     #TODO: rename
-    ax.plot(data.index, data['A'], label='Price')
-    ax.scatter(buy.index, buy['A'], c='tab:green', marker='^', label='Long')
-    ax.scatter(sell.index, sell['A'], c='tab:red', marker='v', label='Short')
-    ax.legend()
+    ax[0].plot(data.index, data['price'], label='Price')
+    ax[0].scatter(buy.index, buy['price'], c='tab:green', marker='^', label='Long')
+    ax[0].scatter(sell.index, sell['price'], c='tab:red', marker='v', label='Short')
+    ax[0].legend()
+    
+    ax[1].grid(True)
+    ax[1].set_title('Quantity')
+    #TODO: rename
+    ax[1].plot(data.index, data['quantity'], label='Quantity')
+    ax[1].legend()
 
 def create_performance(returns: pd.Series):
     print(

@@ -31,21 +31,21 @@ class OUSimulator:
         self.alpha = params.alpha
         self.beta = params.beta
         self.gamma = params.gamma
-        self.dt = 1 / self.size
+        self.dt = 1
     
     def _transform_price(self, process):
         return np.exp(process) * self.pe
-    
-    def _eucler_simulator(self):
+
+    def _euler_simulator(self):
         npr.seed(self.seed)
         process = np.zeros(self.size, dtype=np.float64)
         for i in range(1, self.size):
             process[i] = process[i-1] \
-                        + self.alpha * (self.beta - process[i-1]) * self.dt \
+                        + self.alpha * (self.gamma - process[i-1]) * self.dt \
                         + self.beta * np.sqrt(self.dt) * npr.normal()
         return process
     
     def simulate(self):
-        self.process = self._eucler_simulator()
+        self.process = self._euler_simulator()
         self.price = self._transform_price(self.process)
         return self.price

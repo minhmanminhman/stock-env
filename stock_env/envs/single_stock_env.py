@@ -21,10 +21,10 @@ class SingleStockEnv(gym.Env):
         max_trade_lot: int = 5,
         max_lot: int = 10,
         kappa: float = 1e-4,
-        init_cash: float = 5e4,
+        init_cash: float = 2e4,
+        random_seed: int = None,
     ):
-
-        self.seed()
+        self.seed(random_seed)
         
         # data
         self.df = df
