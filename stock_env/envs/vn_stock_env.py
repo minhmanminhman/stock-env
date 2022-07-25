@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Tuple
 from .base_env import BaseStockEnv
 
-class SingleStockEnv(BaseStockEnv):
+class VietnamStockEnv(BaseStockEnv):
     """
     Stock env in paper: Machine Learning for trading
     https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3015609
@@ -12,7 +12,7 @@ class SingleStockEnv(BaseStockEnv):
     def __init__(
         self,
         df: pd.DataFrame,
-        tick_size: float = 0.1,
+        tick_size: float = 0.05,
         lot_size: int = 100,
         max_trade_lot: int = 5,
         max_lot: int = 10,
@@ -20,7 +20,7 @@ class SingleStockEnv(BaseStockEnv):
         init_cash: float = 2e4,
         random_seed: int = None,
     ):
-        super(SingleStockEnv, self).__init__(
+        super().__init__(
             df=df,
             lot_size=lot_size,
             max_trade_lot=max_trade_lot,
@@ -31,9 +31,12 @@ class SingleStockEnv(BaseStockEnv):
         self.seed(random_seed)
         self.tick_size = tick_size
         self.kappa = kappa
+        
+        # can't short stock
+        self.min_quantity = 0
     
     def reset(self) -> Tuple[np.ndarray, float, bool, dict]:
-        obs = super(SingleStockEnv, self).reset()
+        obs = super().reset()
         self.history.update({
             'actions': [],
             'delta_shares': [],
@@ -47,7 +50,8 @@ class SingleStockEnv(BaseStockEnv):
         return obs
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
-        self._current_tick += 1
+        # T+3 condition
+        self._current_tick += 3
         delta_shares = self._decode_action(action)
         
         # enviroment constraint
