@@ -23,6 +23,7 @@ class BaseStockEnv(gym.Env):
         
         # data
         self.df = df
+        self.close = df
         
         # market params
         self.lot_size = lot_size
@@ -33,7 +34,6 @@ class BaseStockEnv(gym.Env):
         # portfolio params
         self.init_cash = init_cash
         self.cash = None
-        self.nav = None
         self.quantity_choice = self.lot_size * np.arange(-max_trade_lot, max_trade_lot+1)
 
         # episode
@@ -56,6 +56,11 @@ class BaseStockEnv(gym.Env):
         )
     
     @property
+    def nav(self):
+        price = self.close.iloc[self._current_tick].item()
+        return self.quantity * price
+    
+    @property
     def portfolio_value(self):
         return self.nav + self.cash
     
@@ -72,7 +77,6 @@ class BaseStockEnv(gym.Env):
         self.done = False
         self.total_reward = 0
         self.cash = self.init_cash
-        self.nav = 0
         self.quantity = 0
         self.history = {'quantity': []}
         return self._get_observation()
@@ -92,9 +96,7 @@ class BaseStockEnv(gym.Env):
             self.history[key].append(value)
     
     def _update_portfolio(self, delta_shares: int) -> float:
-        prev_price = self.df.iloc[self._current_tick-1].item()
-        price = self.df.iloc[self._current_tick].item()
-        self.nav = self.quantity * price
+        prev_price = self.close.iloc[self._current_tick-1].item()
         # buy/sell at close price
         self.cash -= (delta_shares * prev_price + self._total_cost(delta_shares))
     

@@ -1,44 +1,45 @@
 import finplot as fplt
-import numpy as np
 import mt4_hst
-import pandas as pd
-import pandas_ta as ta
+import stock_env
+from stock_env.utils import *
+from stock_env.envs.vn_stock_env import VietnamStockEnv
 
-####
-import finplot as fplt
-import yfinance
+def plot_format(df):
+    df = df.reset_index(drop=True)
+    df = df.astype({'time':'datetime64[ns]'})
+    return df
 
-df = yfinance.download('AAPL')
-df[['Open', 'Close', 'High', 'Low']]
-print(df.head())
-###
+df = pd.read_csv('temp/history.csv')
+# plot format
+df = plot_format(df)
 
-# # pull some data
-# symbol = 'FPT'
+symbol = 'FPT'
+# create two axes
+ax, ax2 = fplt.create_plot(symbol, rows=2)
 
-# # format it in pandas
-# df = mt4_hst.read_hst("stock_env/datasets/FPT1440.hst")
-# df.ta.rsi(append=True)
-# df.dropna(inplace=True)
+# plot OHLCV
+candles = df[['time','open','close','high','low']]
+fplt.candlestick_ochl(candles, ax=ax)
+volumes = df[['time','open','close','volume']]
+fplt.volume_ocv(volumes, ax=ax.overlay())
 
-# # create two axes
-# ax, ax2 = fplt.create_plot(symbol, rows=2)
+# draw RSI
+fplt.set_y_range(0, 100, ax=ax2)
+df['RSI_14'].plot(ax=ax2, legend='RSI')
+fplt.add_band(30, 70, ax=ax2)
 
-# # plot candle sticks
-# # candles = df[['time','open','close','high','low']]
-# # fplt.candlestick_ochl(candles, ax=ax)
-# df.plot(kind='candle', ax=ax)
+# plot signals
+buy = df[df['delta_shares'] > 0]
+buy = plot_format(buy)
 
-# # overlay volume on the top plot
-# # volumes = df[['time','open','close','volume']]
-# # fplt.volume_ocv(volumes, ax=ax.overlay())
+sell = df[df['delta_shares'] < 0]
+sell = plot_format(sell)
 
-# # draw some random crap on our second plot
-# # fplt.plot(df['time'], df['RSI_14'], ax=ax2, legend='RSI_14')
-# # fplt.set_y_range(-1.4, +3.7, ax=ax2) # hard-code y-axis range limitation
+fplt.plot(buy['time'], buy['low'] * 0.99, ax=ax, color='#408480', style='^', legend='Long')
+fplt.plot(sell['time'], sell['high'] * 1.01, ax=ax, color='#ee0e00', style='v', legend='Short')
 
-# # restore view (X-position and zoom) if we ever run this example again
-# fplt.autoviewrestore()
+# restore view (X-position and zoom) if we ever run this example again
+fplt.autoviewrestore()
 
-# # we're done
-# fplt.show()
+# we're done
+fplt.show()

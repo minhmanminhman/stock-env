@@ -1,14 +1,42 @@
+from dataclasses import dataclass
 import numpy as np
 import pandas as pd
+import pandas_ta as ta
 from typing import Tuple
 from .base_env import BaseStockEnv
+from ..utils import check_col
+from gym import spaces
+
+@dataclass
+class Position:
+    t0_quantity: int = 0
+    t1_quantity: int = 0
+    t2_quantity: int = 0
+    on_hand: int = 0
+    
+    @property
+    def quantity(self):
+        quantity = self.t0_quantity + self.t1_quantity + self.t2_quantity + self.on_hand
+        return quantity
+    
+    def update_position(self):
+        self.on_hand += self.t2_quantity
+        self.t2_quantity = self.t1_quantity
+        self.t1_quantity = self.t0_quantity
+        self.t0_quantity = 0
+    
+    def transact_trade(self, delta_shares):
+        if delta_shares >= 0: # long or hold
+            self.t0_quantity = delta_shares
+        else: # short
+            self.on_hand = self.on_hand + delta_shares
+            assert self.on_hand >= 0
+    
+    def reset(self):
+        self.t0_quantity = self.t1_quantity = self.t2_quantity = self.on_hand = 0
 
 class VietnamStockEnv(BaseStockEnv):
-    """
-    Stock env in paper: Machine Learning for trading
-    https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3015609
-    """
-    
+
     def __init__(
         self,
         df: pd.DataFrame,
@@ -28,15 +56,31 @@ class VietnamStockEnv(BaseStockEnv):
             init_cash=init_cash,
             random_seed=random_seed
         )
-        self.seed(random_seed)
         self.tick_size = tick_size
         self.kappa = kappa
         
+        self.df = self._preprocess(self.df)
+        self.close = self.df.close
+        self._end_tick = self.df.shape[0] - 1
+        self.observation_space = spaces.Box(
+            low=-np.inf, 
+            high=np.inf, 
+            shape=(8,),
+            dtype=np.float64)
+        
+        # Vietnam market condition
         # can't short stock
         self.min_quantity = 0
+        self.position = Position()
+    
+    @property
+    def nav(self):
+        price = self.close.iloc[self._current_tick].item()
+        return self.position.quantity * price
     
     def reset(self) -> Tuple[np.ndarray, float, bool, dict]:
         obs = super().reset()
+        self.position.reset()
         self.history.update({
             'actions': [],
             'delta_shares': [],
@@ -46,47 +90,85 @@ class VietnamStockEnv(BaseStockEnv):
             'portfolio_value': [],
             'nav': [],
             'cash': [],
+            'time': [],
         })
         return obs
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
-        # T+3 condition
-        self._current_tick += 3
+        self._current_tick += 1
+        self.position.update_position()
         delta_shares = self._decode_action(action)
         
         # enviroment constraint
-        quantity = self._get_prev_quantity() + delta_shares
-        self.quantity = np.clip(quantity, self.min_quantity, self.max_quantity)
-        delta_shares = self.quantity - self._get_prev_quantity()
+        modified_delta_shares = self._modify_quantity(delta_shares)
+        self.position.transact_trade(modified_delta_shares)
+        assert self.position.quantity <= self.max_quantity, f"delta_shares: {modified_delta_shares}, position: {self.position.__dict__}"
         
         # calculate reward
-        delta_vt = self._delta_vt(delta_shares)
+        delta_vt = self._delta_vt(modified_delta_shares)
         step_reward = self._calculate_reward(delta_vt)
         self.total_reward += step_reward
         
-        self._update_portfolio(delta_shares)
+        self._update_portfolio(modified_delta_shares)
         
         # always update history last
         info = dict(
             actions = action,
-            delta_shares = delta_shares,
-            quantity = self.quantity,
+            delta_shares = modified_delta_shares,
+            quantity = self.position.quantity,
             delta_vt = delta_vt,
             total_reward = self.total_reward,
             total_profit = self.total_profit,
             portfolio_value = self.portfolio_value,
             nav = self.nav,
             cash = self.cash,
+            time = self.df.time.iloc[self._current_tick],
         )
         self._update_history(info)
         return self._get_observation(), step_reward, self._is_done(), info
+    
+    def _preprocess(self, df):
+        required_col = set('time open high low close volume'.split())
+        check_col(df, required_col)
+        df.sort_values(by='time', inplace=True)
+        
+        # create indicators
+        df.ta.rsi(length=20, append=True)
+        df.ta.log_return(length=20, append=True)
+        df.ta.percent_return(length=20, append=True)
+        df.ta.tsignals(df['close'] > ta.sma(df['close'], 50), append=True)
+        df.ta.tsignals(ta.ema(df['close'], 10) > ta.ema(df['close'], 20), append=True)
+        # df.ta.roc(append=True)
+        # df.ta.stoch(append=True)
+        # df.ta.stochrsi(append=True)
+        # df.ta.tsi(append=True)
+        
+        df.dropna(inplace=True)
+        return df
+
+    def _modify_quantity(self, delta_shares: int) -> int:
+        """
+        modify quantity according to market contraint like T+3 or max quantity
+        """
+        _delta_shares = delta_shares
+        _quantity = self.position.quantity
+        if _delta_shares >= 0: # long or hold
+            if _quantity + _delta_shares > self.max_quantity:
+                delta_shares = max(self.max_quantity - _quantity, 0)
+        else: # short
+            short_quantity = min(self.position.on_hand, abs(_delta_shares))
+            delta_shares = -short_quantity
+        return delta_shares
 
     def _get_observation(self) -> np.ndarray:
         # process window
-        price = self.df.iloc[self._current_tick].item()
-        quantity = self._get_prev_quantity()
-
-        return np.asarray([float(price), float(quantity)])
+        remove_col = set('time open high close low volume'.split())
+        cols = list(set(self.df.columns).difference(remove_col))
+        features = self.df[cols].iloc[self._current_tick].values
+        
+        quantity = self.position.quantity
+        obs = np.append(features, quantity).astype(np.float32)
+        return obs
     
     def _spread_cost(self, delta_shares: int) -> float:
         return abs(delta_shares) * self.tick_size
@@ -98,8 +180,8 @@ class VietnamStockEnv(BaseStockEnv):
         return self._spread_cost(delta_shares) + self._impact_cost(delta_shares)
     
     def _delta_vt(self, delta_shares: int) -> float:
-        prev_price = self.df.iloc[self._current_tick-1].item()
-        price = self.df.iloc[self._current_tick].item()
+        prev_price = self.close.iloc[self._current_tick-1].item()
+        price = self.close.iloc[self._current_tick].item()
         return self.quantity * (price - prev_price) - self._total_cost(delta_shares)
     
     def _decode_action(self, action: int) -> int:
@@ -107,3 +189,8 @@ class VietnamStockEnv(BaseStockEnv):
 
     def _calculate_reward(self, delta_vt: float) -> float:
         return delta_vt - 0.5 * self.kappa * (delta_vt ** 2)
+    
+    def get_history(self):
+        history_df = pd.DataFrame(self.history)
+        data = self.df.merge(history_df, how='inner', on='time')
+        return data
