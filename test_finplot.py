@@ -25,18 +25,27 @@ fplt.volume_ocv(volumes, ax=ax.overlay())
 
 # draw RSI
 fplt.set_y_range(0, 100, ax=ax2)
-df['RSI_14'].plot(ax=ax2, legend='RSI')
+df['RSI_20'].plot(ax=ax2, legend='RSI')
 fplt.add_band(30, 70, ax=ax2)
 
 # plot signals
-buy = df[df['delta_shares'] > 0]
-buy = plot_format(buy)
-
-sell = df[df['delta_shares'] < 0]
-sell = plot_format(sell)
-
-fplt.plot(buy['time'], buy['low'] * 0.99, ax=ax, color='#408480', style='^', legend='Long')
-fplt.plot(sell['time'], sell['high'] * 1.01, ax=ax, color='#ee0e00', style='v', legend='Short')
+try:
+    buy = df[df['delta_shares'] > 0]
+    buy = plot_format(buy)
+    assert len(buy) > 0
+except:
+    pass
+else:
+    fplt.plot(buy['time'], buy['low'] * 0.99, ax=ax, color='#408480', style='^', legend='Long')
+    
+try:
+    sell = df[df['delta_shares'] < 0]
+    sell = plot_format(sell)
+    assert len(sell) > 0
+except:
+    pass
+else:
+    fplt.plot(sell['time'], sell['high'] * 1.01, ax=ax, color='#ee0e00', style='v', legend='Short')
 
 # restore view (X-position and zoom) if we ever run this example again
 fplt.autoviewrestore()
