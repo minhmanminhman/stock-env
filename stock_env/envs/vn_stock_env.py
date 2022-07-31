@@ -6,6 +6,7 @@ from typing import Tuple
 from .base_env import BaseStockEnv
 from ..utils import check_col
 from gym import spaces
+from empyrical import max_drawdown
 
 @dataclass
 class Position:
@@ -65,7 +66,7 @@ class VietnamStockEnv(BaseStockEnv):
         self.observation_space = spaces.Box(
             low=-np.inf, 
             high=np.inf, 
-            shape=(8,),
+            shape=(14,),
             dtype=np.float64)
         
         # Vietnam market condition
@@ -134,14 +135,24 @@ class VietnamStockEnv(BaseStockEnv):
         
         # create indicators
         df.ta.rsi(length=20, append=True)
+        df.ta.natr(length=20, scalar=1, append=True)
+        df.ta.log_return(length=5, append=True)
         df.ta.log_return(length=20, append=True)
+        df.ta.percent_return(length=5, append=True)
         df.ta.percent_return(length=20, append=True)
-        df.ta.tsignals(df['close'] > ta.sma(df['close'], 50), append=True)
-        df.ta.tsignals(ta.ema(df['close'], 10) > ta.ema(df['close'], 20), append=True)
-        # df.ta.roc(append=True)
-        # df.ta.stoch(append=True)
-        # df.ta.stochrsi(append=True)
-        # df.ta.tsi(append=True)
+
+        # trend setup
+        df['close>sma50'] = (df['close'] > df.ta.sma(50)).astype(int)
+        df['close>sma100'] = (df['close'] > df.ta.sma(100)).astype(int)
+        df['close>sma200'] = (df['close'] > df.ta.sma(200)).astype(int)
+        df['ema10>ema20'] = (df.ta.ema(10) > df.ta.ema(20)).astype(int)
+        donchian_20 = ta.donchian(df['high'], df['close'], lower_length=20, upper_length=20)
+        donchian_50 = ta.donchian(df['high'], df['close'], lower_length=50, upper_length=50)
+        df['higher_low'] = (donchian_20['DCL_20_20'] > donchian_50['DCL_50_50']).astype(int)
+        df['breakout'] = (df['close'] > donchian_20['DCU_20_20'].shift(1)).astype(int)
+
+        # volume confirm
+        df['volume_breakout'] = (df['volume'] > ta.sma(df['volume'], 20)).astype(int)
         
         df.dropna(inplace=True)
         return df
@@ -194,3 +205,9 @@ class VietnamStockEnv(BaseStockEnv):
         history_df = pd.DataFrame(self.history)
         data = self.df.merge(history_df, how='inner', on='time')
         return data
+    
+    def _is_done(self):
+        done =  super()._is_done()
+        returns = pd.Series(self.history['portfolio_value']).pct_change()
+        maximum_drawdown = max_drawdown(returns)
+        return done or (maximum_drawdown > 0.2)
