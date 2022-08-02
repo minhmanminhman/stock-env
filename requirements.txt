@@ -4,3 +4,6 @@ stable-baselines3[extra]
 mt4_hst
 pandas_ta
 finplot
+kaleido
+vectorbt
+ipykernel
