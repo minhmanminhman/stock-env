@@ -1,3 +1,4 @@
+import finplot as fplt
 import pandas as pd
 import matplotlib.pyplot as plt
 from pyfolio.plotting import (
@@ -70,7 +71,52 @@ def create_performance(returns: pd.Series):
     plot_drawdown_underwater(returns, ax=axs[1])
     plot_monthly_returns_heatmap(returns, ax=axs[2])
     
-def check_col(x, to_check):
+def check_col(x: pd.DataFrame, to_check):
    if not set(to_check).issubset(set(x.columns)):
       msg = f"{' and '.join(set(to_check).difference(x.columns))} are missing in the dataframe"
       assert False, msg
+
+def plot_format(df):
+    df = df.reset_index(drop=True)
+    df = df.astype({'time':'datetime64[ns]'})
+    return df
+
+def plot_signals(df, ax):
+    """
+    Plot signals generating from ta.tsignals
+    """
+    # check columns
+    required_col = set('time open high low close volume TS_Entries TS_Exits'.split())
+    check_col(df, required_col)
+    
+    # format dataset
+    df = plot_format(df)
+    
+    # plot OHLCV
+    candles = df[['time','open','close','high','low']].copy()
+    fplt.candlestick_ochl(candles, ax=ax)
+    volumes = df[['time','open','close','volume']].copy()
+    fplt.volume_ocv(volumes, ax=ax.overlay())
+
+    # plot signals
+    try:
+        buy = df[['time', 'TS_Entries', 'low']].copy()
+        buy['TS_Entries'] = buy['TS_Entries'].astype(bool)
+        buy = buy[buy['TS_Entries'] == True]
+        buy = plot_format(buy)
+        assert len(buy) > 0
+    except:
+        pass
+    else:
+        fplt.plot(buy['time'], buy['low'] * 0.99, ax=ax, color='#408480', style='^', legend='Long')
+
+    try:
+        sell = df[['time', 'TS_Exits', 'high']].copy()
+        sell['TS_Exits'] = sell['TS_Exits'].astype(bool)
+        sell = sell[sell['TS_Exits'] == True]
+        sell = plot_format(sell)
+        assert len(sell) > 0
+    except:
+        pass
+    else:
+        fplt.plot(sell['time'], sell['high'] * 1.01, ax=ax, color='#ee0e00', style='v', legend='Short')
