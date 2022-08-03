@@ -1,4 +1,3 @@
-import finplot as fplt
 import pandas as pd
 import matplotlib.pyplot as plt
 from pyfolio.plotting import (
@@ -88,6 +87,7 @@ def plot_signals(df, ax):
     # check columns
     required_col = set('time open high low close volume TS_Entries TS_Exits'.split())
     check_col(df, required_col)
+    import finplot as fplt
     
     # format dataset
     df = plot_format(df)
