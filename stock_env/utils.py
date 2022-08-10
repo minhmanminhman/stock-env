@@ -85,7 +85,7 @@ def plot_signals(df, ax):
     Plot signals generating from ta.tsignals
     """
     # check columns
-    required_col = set('time open high low close volume TS_Entries TS_Exits'.split())
+    required_col = set('time open high low close volume'.split())
     check_col(df, required_col)
     import finplot as fplt
     
