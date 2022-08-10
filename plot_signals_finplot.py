@@ -4,8 +4,8 @@ import pandas as pd
 import pandas_ta as ta
 
 symbol = 'FPT'
-df = pd.read_csv('temp/df_candle_pattern.csv')
-df = df[df['time'] >= '2018-01-01']
+df = pd.read_csv('temp/candle_pattern/HAX.csv')
+# df = df[df['time'] >= '2018-01-01']
 df = plot_format(df)
 
 ax = fplt.create_plot(symbol)
@@ -19,13 +19,13 @@ plot_signals(df, ax)
 
 try:
     cdl_pattern = df[['time', 'candle_pattern', 'high']].copy()
-    cdl_pattern = cdl_pattern[cdl_pattern['candle_pattern'] < 0]
+    cdl_pattern = cdl_pattern[cdl_pattern['candle_pattern'] == True]
     cdl_pattern = plot_format(cdl_pattern)
     assert len(cdl_pattern) > 0
 except:
     pass
 else:
-    fplt.plot(cdl_pattern['time'], cdl_pattern['high'] * 1.01, ax=ax, color='#ee0e00', style='crosshair', legend='maru')
+    fplt.plot(cdl_pattern['time'], cdl_pattern['high'] * 1.01, ax=ax, color='#ee0e00', style='crosshair', legend='candle_pattern')
 
 # restore view (X-position and zoom) if we ever run this example again
 fplt.autoviewrestore()
