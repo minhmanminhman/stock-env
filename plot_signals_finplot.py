@@ -3,19 +3,20 @@ from stock_env.utils import plot_signals, plot_format
 import pandas as pd
 import pandas_ta as ta
 
-symbol = 'FPT'
-df = pd.read_csv('temp/candle_pattern/HAX.csv')
-# df = df[df['time'] >= '2018-01-01']
+symbol = 'MBB'
+df = pd.read_csv('temp/signal/' + symbol + '.csv')
+df = df[df['time'] >= '2021-01-01']
 df = plot_format(df)
 
 ax = fplt.create_plot(symbol)
 
 plot_signals(df, ax)
-# df['SMA_50'].plot(ax=ax, legend='MA50')
-# df['EMA_10'].plot(ax=ax, legend='EMA10')
-# df['EMA_20'].plot(ax=ax, legend='EMA20')
-# df['DCL_20_20'].plot(ax=ax, legend='LOW_20')
-# df['DCL_50_50'].plot(ax=ax, legend='LOW_50')
+df['SMA_50'].plot(ax=ax, legend='MA50')
+df['EMA_10'].plot(ax=ax, legend='EMA10')
+df['EMA_20'].plot(ax=ax, legend='EMA20')
+df['DCL_10_10'].plot(ax=ax, legend='LOW_10')
+df['DCL_20_20'].plot(ax=ax, legend='LOW_20')
+df['DCL_50_50'].plot(ax=ax, legend='LOW_50')
 
 try:
     cdl_pattern = df[['time', 'candle_pattern', 'high']].copy()
