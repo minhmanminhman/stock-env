@@ -8,6 +8,87 @@ from ..utils import check_col
 from gym import spaces
 from empyrical import max_drawdown
 
+# Create your own Custom Strategy
+TrendStrategy = ta.Strategy(
+    name="Trend Signal Strategy",
+    description="SMA 50,200, BBANDS, RSI, MACD and Volume SMA 20",
+    ta=[
+        {"kind": "percent_return", "length": 1},
+        {"kind": "sma", "length": 50},
+        {"kind": "ema", "length": 10},
+        {"kind": "ema", "length": 20},
+        {"kind": "donchian", "lower_length": 10, "upper_length": 10},
+        {"kind": "donchian", "lower_length": 20, "upper_length": 20},
+        {"kind": "donchian", "lower_length": 50, "upper_length": 50},
+        {"kind": "sma", "close": "volume", "length": 20, "prefix": "VOLUME"},
+    ]
+)
+
+# v2
+def trends(df: pd.DataFrame):
+    # create neccesary indicators
+    df.ta.strategy(TrendStrategy)
+    
+    # condition
+    trend_cond = (
+        (df['close'] > df['SMA_50']).astype(int)
+        + (df['EMA_10'] > df['EMA_20']).astype(int)
+        + (df['DCL_10_10'] > df['DCL_50_50']).astype(int)
+    ) >= 3
+    
+    return trend_cond
+
+def trends_confirm_entries(df: pd.DataFrame):
+    volume_breakout = (df['volume'] >= 1.25 * df['VOLUME_SMA_20']).astype(int)
+    
+    # candle pattern
+    entry_pattern = df.ta.cdl_pattern(
+        name=["closingmarubozu", "marubozu", "engulfing", "longline"], 
+        scalar=1).sum(axis=1).astype(int)
+    
+    exit_pattern = df.ta.cdl_pattern(
+        name=[
+            # "doji", "dojistar", "dragonflydoji", "eveningdojistar", "invertedhammer", "eveningstar", "gravestonedoji", "hangingman", 
+            "closingmarubozu", "marubozu", "engulfing", "longline"
+            # "3blackcrows", "longleggeddoji", "shootingstar", "spinningtop"
+        ], 
+        scalar=1).sum(axis=1).astype(int)
+    
+    df['entry'] = ((entry_pattern > 0) * volume_breakout * (df['close'] > df['DCU_10_10'].shift())).astype(bool).astype(int)
+    df['exit'] = (
+        (exit_pattern < 0) 
+        # * volume_breakout 
+        # * (df['close'] < df['DCL_10_10'].shift())
+    ).astype(bool).astype(int)
+    
+    def modify_entry_exit(df):
+        df['trends_'] = np.nan
+        
+        try:
+            entry_idx = df[df['entry'] == 1].index[0]
+            df['trends_'].loc[entry_idx] = 1
+            
+            try:
+                exit_idx = df[df['exit'] == 1].index[-1]
+                if entry_idx <= exit_idx:
+                    df['trends_'].loc[exit_idx] = 1
+            except:
+                pass
+            finally:
+                df['trends_'] = df['trends_'].ffill()
+        except IndexError:
+            df['trends_'] = df['trends_'].fillna(0)
+        
+        try:
+            df['trends_'] = df['trends_'].interpolate(limit_area='inside', method='nearest')
+        except ValueError:
+            df['trends_'] = df['trends_'].fillna(0)
+        return df['trends_'].fillna(0) * df['trends']
+
+    df['original_trends'] = df['trends']
+    df['trends'] = df.groupby((df.trends != df.trends.shift()).cumsum()).apply(modify_entry_exit).to_list()
+    return df
+
 @dataclass
 class Position:
     t0_quantity: int = 0
@@ -66,7 +147,7 @@ class VietnamStockEnv(BaseStockEnv):
         self.observation_space = spaces.Box(
             low=-np.inf, 
             high=np.inf, 
-            shape=(14,),
+            shape=(2,),
             dtype=np.float64)
         
         # Vietnam market condition
@@ -134,25 +215,9 @@ class VietnamStockEnv(BaseStockEnv):
         df.sort_values(by='time', inplace=True)
         
         # create indicators
-        df.ta.rsi(length=20, append=True)
-        df.ta.natr(length=20, scalar=1, append=True)
-        df.ta.log_return(length=5, append=True)
-        df.ta.log_return(length=20, append=True)
-        df.ta.percent_return(length=5, append=True)
-        df.ta.percent_return(length=20, append=True)
-
-        # trend setup
-        df['close>sma50'] = (df['close'] > df.ta.sma(50)).astype(int)
-        df['close>sma100'] = (df['close'] > df.ta.sma(100)).astype(int)
-        df['close>sma200'] = (df['close'] > df.ta.sma(200)).astype(int)
-        df['ema10>ema20'] = (df.ta.ema(10) > df.ta.ema(20)).astype(int)
-        donchian_20 = ta.donchian(df['high'], df['close'], lower_length=20, upper_length=20)
-        donchian_50 = ta.donchian(df['high'], df['close'], lower_length=50, upper_length=50)
-        df['higher_low'] = (donchian_20['DCL_20_20'] > donchian_50['DCL_50_50']).astype(int)
-        df['breakout'] = (df['close'] > donchian_20['DCU_20_20'].shift(1)).astype(int)
-
-        # volume confirm
-        df['volume_breakout'] = (df['volume'] > ta.sma(df['volume'], 20)).astype(int)
+        df['trends'] = trends(df)
+        df = trends_confirm_entries(df)
+        df.ta.tsignals(df['trends'], append=True)
         
         df.dropna(inplace=True)
         return df
@@ -173,9 +238,10 @@ class VietnamStockEnv(BaseStockEnv):
 
     def _get_observation(self) -> np.ndarray:
         # process window
-        remove_col = set('time open high close low volume'.split())
-        cols = list(set(self.df.columns).difference(remove_col))
-        features = self.df[cols].iloc[self._current_tick].values
+        # remove_col = set('time open high close low volume'.split())
+        # cols = list(set(self.df.columns).difference(remove_col))
+        # features = self.df[cols].iloc[self._current_tick].values
+        features = self.df[['TS_Trends']].iloc[self._current_tick].values
         
         quantity = self.position.quantity
         obs = np.append(features, quantity).astype(np.float32)
@@ -199,7 +265,8 @@ class VietnamStockEnv(BaseStockEnv):
         return np.take(self.quantity_choice, action)
 
     def _calculate_reward(self, delta_vt: float) -> float:
-        return delta_vt - 0.5 * self.kappa * (delta_vt ** 2)
+        money_penalty = -self.cash * (1 - 0.04/365)
+        return delta_vt - 0.5 * self.kappa * (delta_vt ** 2) + money_penalty
     
     def get_history(self):
         history_df = pd.DataFrame(self.history)
