@@ -5,6 +5,7 @@ import stock_env
 from stock_env.envs.vn_stock_env import VietnamStockEnv
 import gym
 import mt4_hst
+from stable_baselines3.common.env_checker import check_env
 
 df = mt4_hst.read_hst("stock_env/datasets/FPT1440.hst")
 df = df[df['time'] >= '2012-01-01']
@@ -13,7 +14,7 @@ env = VietnamStockEnv(
     max_trade_lot=5,
     max_lot=10,
     init_cash=5e3)
-
+check_env(env)
 # model = DQN(
 #     'MlpPolicy',
 #     env=env, 
@@ -38,10 +39,10 @@ model = PPO(
     gamma=0.999,
     batch_size=32,
     tensorboard_log='log',
-    verbose=0,
+    verbose=1,
 )
 model.learn(
-    total_timesteps=1000000,
+    total_timesteps=50000,
     eval_env=None,
     eval_freq=0,
     n_eval_episodes=0,
