@@ -47,17 +47,13 @@ def trends_confirm_entries(df: pd.DataFrame):
         scalar=1).sum(axis=1).astype(int)
     
     exit_pattern = df.ta.cdl_pattern(
-        name=[
-            # "doji", "dojistar", "dragonflydoji", "eveningdojistar", "invertedhammer", "eveningstar", "gravestonedoji", "hangingman", 
-            "closingmarubozu", "marubozu", "engulfing", "longline"
-            # "3blackcrows", "longleggeddoji", "shootingstar", "spinningtop"
-        ], 
+        name=["closingmarubozu", "marubozu", "engulfing", "longline"], 
         scalar=1).sum(axis=1).astype(int)
     
     df['entry'] = ((entry_pattern > 0) * volume_breakout * (df['close'] > df['DCU_10_10'].shift())).astype(bool).astype(int)
     df['exit'] = (
         (exit_pattern < 0) 
-        # * volume_breakout 
+        * volume_breakout 
         # * (df['close'] < df['DCL_10_10'].shift())
     ).astype(bool).astype(int)
     

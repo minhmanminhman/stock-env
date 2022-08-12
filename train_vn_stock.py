@@ -7,8 +7,11 @@ import gym
 import mt4_hst
 from stable_baselines3.common.env_checker import check_env
 
-df = mt4_hst.read_hst("stock_env/datasets/FPT1440.hst")
-df = df[df['time'] >= '2012-01-01']
+ticker = 'MBB'
+df = mt4_hst.read_hst("../stock_datasets/" + ticker + "1440.hst")
+df = df[df['time'] >= '2014-01-01']
+df = df.sort_values('time')
+
 env = VietnamStockEnv(
     df=df,
     max_trade_lot=5,
