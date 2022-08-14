@@ -99,7 +99,8 @@ class BaseStockEnv(gym.Env):
         prev_price = self.close.iloc[self._current_tick-1].item()
         # buy/sell at close price
         self.cash -= (delta_shares * prev_price + self._total_cost(delta_shares))
-    
+        assert self.cash >= 0
+
     def _is_done(self):
         if (self._current_tick == self._end_tick) \
             or (self.portfolio_value <= 0):
