@@ -10,16 +10,16 @@ import mt4_hst
 from stable_baselines3.common.env_checker import check_env
 
 if __name__ == '__main__':
-    ticker = 'FPT'
+    ticker = 'CTG'
     df = mt4_hst.read_hst("../stock_datasets/" + ticker + "1440.hst")
-    df = df[df['time'] >= '2014-01-01']
+    # df = df[df['time'] >= '2014-01-01']
     df = df.sort_values('time')
 
     env = VietnamStockV2Env(
         df=df,
         max_trade_lot=5,
         max_lot=10,
-        init_cash=5e3)
+        init_cash=100e3)
     check_env(env)
     # model = DQN(
     #     'MlpPolicy',
@@ -41,6 +41,7 @@ if __name__ == '__main__':
         'MlpPolicy',
         env=env, 
         learning_rate=1e-3,
+        ent_coef=0.01,
         n_steps=64,
         gamma=0.999,
         batch_size=32,
@@ -62,7 +63,7 @@ if __name__ == '__main__':
     #     verbose=1,
     # )
     model.learn(
-        total_timesteps=100000,
+        total_timesteps=70000,
         eval_env=None,
         eval_freq=0,
         n_eval_episodes=0,
@@ -76,6 +77,7 @@ if __name__ == '__main__':
     # run model to get detailed information in the enviroment
     done = False
     obs = env.reset()
+    env._start_tick = 0
     while not done:
         action, _ = model.predict(obs, deterministic=True)
         obs, _, done, _ = env.step(action)
