@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pandas_ta as ta
 from typing import Tuple
-from .base_env import BaseStockEnv, BaseVietnamStockEnv
+from .base_env import BaseStockEnv, BaseVietnamStockEnv, Position
 from ..utils import check_col
 from gym import spaces
 from empyrical import max_drawdown
