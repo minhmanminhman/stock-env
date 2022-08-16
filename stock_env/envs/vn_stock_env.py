@@ -1,9 +1,8 @@
-from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 import pandas_ta as ta
 from typing import Tuple
-from .base_env import BaseStockEnv
+from .base_env import BaseStockEnv, BaseVietnamStockEnv
 from ..utils import check_col
 from gym import spaces
 from empyrical import max_drawdown
@@ -12,35 +11,6 @@ from ..feature.feature_extractor import BaseFeaturesExtractor
 
 # quantity = 1000, buy = 100 -> env chinh lai cai action la buy = 0 -> penalty mua du
 # them cac action truoc do 2 weeks
-
-@dataclass
-class Position:
-    t0_quantity: int = 0
-    t1_quantity: int = 0
-    t2_quantity: int = 0
-    on_hand: int = 0
-    ticker: str = None
-    
-    @property
-    def quantity(self):
-        quantity = self.t0_quantity + self.t1_quantity + self.t2_quantity + self.on_hand
-        return quantity
-    
-    def update_position(self):
-        self.on_hand += self.t2_quantity
-        self.t2_quantity = self.t1_quantity
-        self.t1_quantity = self.t0_quantity
-        self.t0_quantity = 0
-    
-    def transact_trade(self, delta_shares):
-        if delta_shares >= 0: # long or hold
-            self.t0_quantity = delta_shares
-        else: # short
-            self.on_hand = self.on_hand + delta_shares
-            assert self.on_hand >= 0
-    
-    def reset(self):
-        self.t0_quantity = self.t1_quantity = self.t2_quantity = self.on_hand = 0
 
 class VietnamStockEnv(BaseStockEnv):
 
@@ -215,13 +185,12 @@ class VietnamStockEnv(BaseStockEnv):
         maximum_drawdown = max_drawdown(returns)
         return done or (maximum_drawdown < -0.5)
 
-class VietnamStockV2Env(BaseStockEnv):
+class VietnamStockV2Env(BaseVietnamStockEnv):
 
     def __init__(
         self,
         df: pd.DataFrame,
         feature_extractor: BaseFeaturesExtractor,
-        tickers: list,
         tick_size: float = 0.05,
         lot_size: int = 100,
         max_trade_lot: int = 5,
@@ -229,6 +198,7 @@ class VietnamStockV2Env(BaseStockEnv):
         kappa: float = 1e-4,
         init_cash: float = 2e4,
         random_seed: int = None,
+        ticker: str = None,
     ):
         super().__init__(
             df=df,
@@ -236,15 +206,17 @@ class VietnamStockV2Env(BaseStockEnv):
             max_trade_lot=max_trade_lot,
             max_lot=max_lot,
             init_cash=init_cash,
-            random_seed=random_seed
+            random_seed=random_seed,
+            ticker=ticker,
         )
         self.tick_size = tick_size
         self.kappa = kappa
-        self.tickers = tickers
         self.feature_extractor = feature_extractor
+        
         self.features, self.df = self._preprocess(self.df)
         self.close = self.df.close
         self._end_tick = self.df.shape[0] - 1
+        self.ticker = ticker
         self.observation_space = spaces.Box(
             low=-np.inf, 
             high=np.inf, 
@@ -254,25 +226,9 @@ class VietnamStockV2Env(BaseStockEnv):
         # Vietnam market condition
         # can't short stock
         self.min_quantity = 0
-        self.positions = []
-        for ticker in self.tickers:
-            self.positions.append(Position(ticker=ticker))
     
-    @property
-    def nav(self):
-        price = self.close.iloc[self._current_tick].item()
-        return self.position.quantity * price
-
-    @property
-    def prev_price(self, ticker):
-        return self.close.iloc[self._current_tick-1].item()
-    
-    @property
-    def price(self):
-        return self.close.iloc[self._current_tick].item()
-    
-    def reset(self) -> Tuple[np.ndarray, float, bool, dict]:
-        obs = super().reset()
+    def reset(self, **kwargs) -> Tuple[np.ndarray, float, bool, dict]:
+        obs = super().reset(**kwargs)
         self.position.reset()
         self.history.update({
             'actions': [],
@@ -354,7 +310,6 @@ class VietnamStockV2Env(BaseStockEnv):
         features = self.features.iloc[self._current_tick].values
         quantity = self.position.quantity
         obs = np.append(features, quantity).astype(np.float32)
-        obs = np.append(obs, self.cash).astype(np.float32)
         return obs
     
     def _spread_cost(self, delta_shares: int) -> float:
