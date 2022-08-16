@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from xml.sax.handler import property_dom_node
 import numpy as np
 import pandas as pd
 import pandas_ta as ta
@@ -9,40 +8,10 @@ from ..utils import check_col
 from gym import spaces
 from empyrical import max_drawdown
 from ..strategy.trend_strategy import *
-import stable_baselines3
+from ..feature.feature_extractor import BaseFeaturesExtractor
+
 # quantity = 1000, buy = 100 -> env chinh lai cai action la buy = 0 -> penalty mua du
 # them cac action truoc do 2 weeks
-
-class FeaturesExtractor:
-    
-    def __init__(self):
-        self.strategy = ta.Strategy(
-            name="Standard Technical Indicator in various research of automatic stock trading",
-            description="SMA MACD RSI CCI ADX Bollinger",
-            ta=[
-                {"kind": "sma", "length": 10},
-                {"kind": "rsi", "length": 14},
-                {"kind": "cci", "length": 14},
-                {"kind": "adx", "length": 14},
-                {"kind": "bbands"},
-                {"kind": "macd"},
-            ]
-        )
-        self.required_cols = set('time open high low close volume'.split())
-        self.feature_cols = "close SMA_10 RSI_14 CCI_14_0.015 BBL_5_2.0 BBU_5_2.0 MACD_12_26_9".split()
-        # indicators + cash + holding
-        self.feature_dim = len(self.feature_cols) + 2
-    
-    def preprocess(self, df):
-        check_col(df, self.required_cols)
-        df.sort_values(by='time', inplace=True)
-        # create indicators
-        df.ta.strategy(self.strategy)
-        
-        df.dropna(inplace=True)
-        df = df.reset_index(drop=True)
-        df.sort_values(by='time', inplace=True)
-        return df[self.feature_cols]
 
 @dataclass
 class Position:
@@ -50,6 +19,7 @@ class Position:
     t1_quantity: int = 0
     t2_quantity: int = 0
     on_hand: int = 0
+    ticker: str = None
     
     @property
     def quantity(self):
@@ -250,6 +220,8 @@ class VietnamStockV2Env(BaseStockEnv):
     def __init__(
         self,
         df: pd.DataFrame,
+        feature_extractor: BaseFeaturesExtractor,
+        tickers: list,
         tick_size: float = 0.05,
         lot_size: int = 100,
         max_trade_lot: int = 5,
@@ -268,27 +240,23 @@ class VietnamStockV2Env(BaseStockEnv):
         )
         self.tick_size = tick_size
         self.kappa = kappa
-        self.feature_extractor = FeaturesExtractor()
-        
+        self.tickers = tickers
+        self.feature_extractor = feature_extractor
         self.features, self.df = self._preprocess(self.df)
         self.close = self.df.close
         self._end_tick = self.df.shape[0] - 1
         self.observation_space = spaces.Box(
             low=-np.inf, 
             high=np.inf, 
-            shape=(self.feature_extractor.feature_dim,),
+            shape=(self.feature_extractor.feature_dim + 2,),
             dtype=np.float64)
-        
-        self.action_space = spaces.Box(
-            low=0, 
-            high=1, 
-            shape=(1,),
-            dtype=np.float32)
         
         # Vietnam market condition
         # can't short stock
         self.min_quantity = 0
-        self.position = Position()
+        self.positions = []
+        for ticker in self.tickers:
+            self.positions.append(Position(ticker=ticker))
     
     @property
     def nav(self):
@@ -296,13 +264,7 @@ class VietnamStockV2Env(BaseStockEnv):
         return self.position.quantity * price
 
     @property
-    def pnl_from_holding(self):
-        price = self.close.iloc[self._current_tick].item()
-        start_price = self.close.iloc[self._start_tick].item()
-        return price / start_price
-    
-    @property
-    def prev_price(self):
+    def prev_price(self, ticker):
         return self.close.iloc[self._current_tick-1].item()
     
     @property
@@ -364,7 +326,6 @@ class VietnamStockV2Env(BaseStockEnv):
         required_col = set('time open high low close volume'.split())
         check_col(df, required_col)
         df.sort_values(by='time', inplace=True)
-        df = df.reset_index(drop=True)
         features = self.feature_extractor.preprocess(df)
         return features, df
 
@@ -408,24 +369,12 @@ class VietnamStockV2Env(BaseStockEnv):
     def _delta_vt(self, delta_shares: int) -> float:
         return self.position.quantity * (self.price - self.prev_price) - self._total_cost(delta_shares)
     
-    # def _decode_action(self, action: int) -> int:
-    #     return np.take(self.quantity_choice, action)
+    def _decode_action(self, action: int) -> int:
+        return np.take(self.quantity_choice, action)
     
-    def _decode_action(self, action: float) -> int:
-        stock_percent = self.nav / self.portfolio_value
-        diff_percent = action - stock_percent
-        diff_value = diff_percent * self.portfolio_value
-        diff_shares = int((diff_value / self.prev_price) / self.lot_size) * self.lot_size
-        return np.clip(diff_shares, self.min_quantity, self.max_quantity)
-
     def _calculate_reward(self, delta_vt: float) -> float:
         money_penalty = -self.cash * (1 - 0.04/365)
-        return delta_vt - 0.5 * self.kappa * (delta_vt ** 2) + money_penalty
-    
-    # def _calculate_reward(self, delta_vt: float) -> float:
-    #     money_penalty = -self.cash * (1 - 0.04/365)
-    #     baseline = self.init_cash * self.pnl_from_holding
-    #     return ((self.portfolio_value - baseline) + money_penalty)
+        return delta_vt #- 0.5 * self.kappa * (delta_vt ** 2) + money_penalty
     
     def get_history(self):
         history_df = pd.DataFrame(self.history)
@@ -437,3 +386,8 @@ class VietnamStockV2Env(BaseStockEnv):
         returns = pd.Series(self.history['portfolio_value']).pct_change()
         maximum_drawdown = max_drawdown(returns)
         return done or (maximum_drawdown < -0.5)
+    
+    def _update_portfolio(self, delta_shares: int) -> float:
+        # buy/sell at close price
+        self.cash -= (delta_shares * self.prev_price + self._total_cost(delta_shares))
+        assert self.cash >= 0
