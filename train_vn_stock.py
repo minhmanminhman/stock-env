@@ -10,7 +10,7 @@ import mt4_hst
 from stable_baselines3.common.env_checker import check_env
 
 if __name__ == '__main__':
-    ticker = 'CTG'
+    ticker = 'ROS'
     df = mt4_hst.read_hst("../stock_datasets/" + ticker + "1440.hst")
     # df = df[df['time'] >= '2014-01-01']
     df = df.sort_values('time')
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     #     verbose=1,
     # )
     model.learn(
-        total_timesteps=70000,
+        total_timesteps=50000,
         eval_env=None,
         eval_freq=0,
         n_eval_episodes=0,
@@ -77,7 +77,7 @@ if __name__ == '__main__':
     # run model to get detailed information in the enviroment
     done = False
     obs = env.reset()
-    env._start_tick = 0
+    env._current_tick = 0
     while not done:
         action, _ = model.predict(obs, deterministic=True)
         obs, _, done, _ = env.step(action)
