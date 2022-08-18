@@ -156,9 +156,6 @@ class BaseVietnamStockEnv(gym.Env):
     def __init__(
         self,
         df: pd.DataFrame,
-        lot_size: int = 100,
-        max_trade_lot: int = 5,
-        max_lot: int = 10,
         init_cash: float = 2e4,
         random_seed: int = None,
         ticker: str = None,
@@ -168,18 +165,13 @@ class BaseVietnamStockEnv(gym.Env):
         # data
         required_col = set('time open high low close volume'.split())
         check_col(df, required_col)
+        df = df.sort_values(by='time')
         self.df = df
         self.close = df.close
         self.ticker = ticker
-        # market params
-        self.lot_size = lot_size
-        self.max_trade_lot = max_trade_lot
-        self.max_quantity = max_lot * lot_size
-        self.min_quantity = -max_lot * lot_size
         # portfolio params
         self.init_cash = init_cash
         self.cash = None
-        self.quantity_choice = self.lot_size * np.arange(-max_trade_lot, max_trade_lot+1)
         self.position = Position()
 
         # episode
@@ -189,16 +181,6 @@ class BaseVietnamStockEnv(gym.Env):
         self.done = None
         self.total_reward = None
         self.history = None
-        
-        # spaces
-        self.n_action = len(self.quantity_choice)
-        self.action_space = spaces.Discrete(self.n_action)
-        self.observation_space = spaces.Box(
-            low=-np.inf, 
-            high=np.inf, 
-            shape=(2,), # [price, quantity]
-            dtype=np.float64
-        )
     
     @property
     def portfolio_value(self):
@@ -235,7 +217,7 @@ class BaseVietnamStockEnv(gym.Env):
         self.done = False
         self.total_reward = 0
         self.cash = self.init_cash
-        self.quantity = 0
+        self.position.reset()
         self.history = {'quantity': []}
         return self._get_observation()
 
@@ -253,7 +235,7 @@ class BaseVietnamStockEnv(gym.Env):
         return False
     
     @abstractmethod
-    def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
+    def step(self, action) -> Tuple[np.ndarray, float, bool, dict]:
         raise NotImplementedError
 
     @abstractmethod
@@ -261,5 +243,5 @@ class BaseVietnamStockEnv(gym.Env):
         raise NotImplementedError
     
     @abstractmethod
-    def _total_cost(self) -> float:
+    def _preprocess(self, *args, **kwargs) -> Tuple[pd.DataFrame, pd.DataFrame]:
         raise NotImplementedError
