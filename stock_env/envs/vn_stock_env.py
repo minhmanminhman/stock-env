@@ -1,4 +1,3 @@
-from cmath import cos
 import numpy as np
 import pandas as pd
 import pandas_ta as ta
@@ -7,8 +6,8 @@ from .base_env import BaseVietnamStockEnv
 from gym import spaces
 from ..feature.feature_extractor import BaseFeaturesExtractor
 
-# quantity = 1000, buy = 100 -> env chinh lai cai action la buy = 0 -> penalty mua du
-# them cac action truoc do 2 weeks
+#TODO: quantity = 1000, buy = 100 -> env chinh lai cai action la buy = 0 -> penalty mua du
+#TODO: them cac action truoc do 2 weeks
 
 class VietnamStockEnv(BaseVietnamStockEnv):
 
