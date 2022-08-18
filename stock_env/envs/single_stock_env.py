@@ -84,14 +84,10 @@ class SingleStockEnv(BaseStockEnv):
 
         return np.asarray([float(price), float(quantity)])
     
-    def _spread_cost(self, delta_shares: int) -> float:
-        return abs(delta_shares) * self.tick_size
-
-    def _impact_cost(self, delta_shares: int) -> float:
-        return delta_shares ** 2 * self.tick_size / self.lot_size
-    
     def _total_cost(self, delta_shares: int) -> float:
-        return self._spread_cost(delta_shares) + self._impact_cost(delta_shares)
+        spread_cost = abs(delta_shares) * self.tick_size
+        impact_cost = delta_shares ** 2 * self.tick_size / self.lot_size
+        return spread_cost + impact_cost
     
     def _delta_vt(self, delta_shares: int) -> float:
         prev_price = self.df.iloc[self._current_tick-1].item()
