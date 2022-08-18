@@ -149,3 +149,75 @@ class MultiStockEnv(gym.Env):
 
         for key, value in info.items():
             self.histories[key].append(value)
+
+
+class MultiStockContinuousEnv(MultiStockEnv):
+    def __init__(
+        self, 
+        tickers: str, 
+        feature_extractor: BaseFeaturesExtractor,
+        data_folder_path: str,
+        tick_size: float = 0.05,
+        lot_size: int = 100,
+        max_trade_lot: int = 5,
+        max_lot: int = 10,
+        kappa: float = 1e-4,
+        init_cash: float = 2e4,
+        random_seed: int = None,
+    ):
+        super().__init__(
+            tickers=tickers,
+            feature_extractor=feature_extractor,
+            data_folder_path=data_folder_path,
+            tick_size=tick_size,
+            lot_size=lot_size,
+            max_trade_lot=max_trade_lot,
+            max_lot=max_lot,
+            kappa=kappa,
+            init_cash=init_cash,
+            random_seed=random_seed,
+        )
+        self.action_space = spaces.Box(
+            low=-1,
+            high=1
+            shape=(len(self.envs),),
+            dtype=np.float32
+        )
+    
+    def _get_observation(self, observations: list):
+        obs = np.concatenate(observations)
+        cash_percent = self.cash / self.portfolio_value
+        obs = np.append(obs, cash_percent).astype(np.float32)
+        return obs
+    
+    def step(self, action: np.ndarray):
+        obs, step_reward, done = [], 0, False
+        action = self.unscale_action(action)
+        action = action.reshape(-1, 1)
+        for _action, env in zip(action, self.envs):
+            _obs, _reward, _done, _ = env.step(_action)
+            obs.append(_obs)
+            step_reward += _reward
+            done = done or _done
+        obs = self._get_observation(obs)
+        
+        # always update history last
+        info = dict(
+            total_portfolio_value = self.portfolio_value,
+            total_nav = self.nav,
+            total_cash = self.cash,
+            total_step_reward = step_reward,
+            time = env.df.time.iloc[env._current_tick],
+        )
+        self._update_history(info)
+        return obs, step_reward, done, info
+    
+    def unscale_action(self, scaled_action: np.ndarray) -> np.ndarray:
+        """
+        Rescale the action from [-1, 1] to [low, high]
+        (no need for symmetric action space)
+
+        :param scaled_action: Action to un-scale
+        """
+        low, high = 0, 1
+        return low + (0.5 * (scaled_action + 1.0) * (high - low))
