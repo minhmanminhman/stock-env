@@ -35,17 +35,27 @@ def plot_trade_log(data: pd.DataFrame):
     ax[1].legend()
     
 def plot_trade_log_v2(data: pd.DataFrame):
-    buy = data[data['delta_shares'] > 0]
-    sell = data[data['delta_shares'] < 0]
-    
     fig, ax = plt.subplots(2, 1, figsize=(15,8))
     
     ax[0].grid(True)
     ax[0].set_title('Trade log')
     #TODO: rename
     ax[0].plot(data['time'], data['close'], label='Price')
-    ax[0].scatter(buy['time'], buy['close'], c='tab:green', marker='^', label='Long')
-    ax[0].scatter(sell['time'], sell['close'], c='tab:red', marker='v', label='Short')
+    
+    try:
+        buy = data[data['delta_shares'] > 0]
+        assert len(buy) > 0
+        ax[0].scatter(buy['time'], buy['close'], c='tab:green', marker='^', label='Long')
+    except:
+        pass
+    
+    try:
+        sell = data[data['delta_shares'] < 0]
+        assert len(sell) > 0
+        ax[0].scatter(sell['time'], sell['close'], c='tab:red', marker='v', label='Short')
+    except:
+        pass
+    
     ax[0].legend()
     
     ax[1].grid(True)

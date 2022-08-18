@@ -5,6 +5,36 @@ from gym import spaces
 from gym.utils import seeding
 import pandas as pd
 from typing import Tuple
+from dataclasses import dataclass
+from ..utils import check_col
+
+@dataclass
+class Position:
+    t0_quantity: int = 0
+    t1_quantity: int = 0
+    t2_quantity: int = 0
+    on_hand: int = 0
+    
+    @property
+    def quantity(self):
+        quantity = self.t0_quantity + self.t1_quantity + self.t2_quantity + self.on_hand
+        return quantity
+    
+    def update_position(self):
+        self.on_hand += self.t2_quantity
+        self.t2_quantity = self.t1_quantity
+        self.t1_quantity = self.t0_quantity
+        self.t0_quantity = 0
+    
+    def transact_trade(self, delta_shares):
+        if delta_shares >= 0: # long or hold
+            self.t0_quantity = delta_shares
+        else: # short
+            self.on_hand = self.on_hand + delta_shares
+            assert self.on_hand >= 0
+    
+    def reset(self):
+        self.t0_quantity = self.t1_quantity = self.t2_quantity = self.on_hand = 0
 
 class BaseStockEnv(gym.Env):
 
@@ -117,4 +147,101 @@ class BaseStockEnv(gym.Env):
     
     @abstractmethod
     def _total_cost(self) -> float:
+        raise NotImplementedError
+
+class BaseVietnamStockEnv(gym.Env):
+
+    metadata = {'render.modes': ['human']}
+
+    def __init__(
+        self,
+        df: pd.DataFrame,
+        init_cash: float = 2e4,
+        random_seed: int = None,
+        ticker: str = None,
+    ):
+        self.seed(random_seed)
+        
+        # data
+        required_col = set('time open high low close volume'.split())
+        check_col(df, required_col)
+        df = df.sort_values(by='time')
+        self.df = df
+        self.close = df.close
+        self.ticker = ticker
+        # portfolio params
+        self.init_cash = init_cash
+        self.cash = None
+        self.position = Position()
+
+        # episode
+        self._start_tick = 0
+        self._end_tick = self.df.shape[0] - 1
+        self._current_tick = None
+        self.done = None
+        self.total_reward = None
+        self.history = None
+    
+    @property
+    def portfolio_value(self):
+        return self.nav + self.cash
+    
+    @property
+    def total_profit(self):
+        return self.portfolio_value - self.init_cash
+    
+    @property
+    def nav(self):
+        return self.position.quantity * self.price
+
+    @property
+    def prev_price(self):
+        return self.close.iloc[self._current_tick-1].item()
+    
+    @property
+    def price(self):
+        return self.close.iloc[self._current_tick].item()
+
+    def seed(self, seed=None):
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
+
+    def reset(self, current_tick='random') -> Tuple[np.ndarray, float, bool, dict]:
+        if current_tick == 'random':
+            self._current_tick = np.random.randint(self._start_tick, self._end_tick)
+        elif isinstance(current_tick, int):
+            self._current_tick = current_tick
+        else:
+            raise NotImplementedError
+        
+        self.done = False
+        self.total_reward = 0
+        self.cash = self.init_cash
+        self.position.reset()
+        self.history = {'quantity': []}
+        return self._get_observation()
+
+    def _update_history(self, info: dict) -> None:
+        if not self.history:
+            self.history = {key: [] for key in info.keys()}
+
+        for key, value in info.items():
+            self.history[key].append(value)
+    
+    def _is_done(self):
+        if (self._current_tick == self._end_tick) \
+            or (self.portfolio_value <= 0):
+            return True
+        return False
+    
+    @abstractmethod
+    def step(self, action) -> Tuple[np.ndarray, float, bool, dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def _get_observation(self) -> np.ndarray:
+        raise NotImplementedError
+    
+    @abstractmethod
+    def _preprocess(self, *args, **kwargs) -> Tuple[pd.DataFrame, pd.DataFrame]:
         raise NotImplementedError
