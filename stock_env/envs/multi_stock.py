@@ -53,8 +53,9 @@ class MultiStockEnv(gym.Env):
         # align date
         df = df.set_index('time', drop=False).pivot(columns=['ticker'])
         # format axis
-        self.df = df.swaplevel(0, 1, axis=1).sort_index(axis=1).reset_index(drop=True)
+        self.df = df.swaplevel(0, 1, axis=1).sort_index(axis=1)
         self.df.dropna(inplace=True)
+        self.df = self.df.reset_index(drop=True)
         
         for ticker in self.tickers:
             _env = VietnamStockEnv(
@@ -188,9 +189,10 @@ class MultiStockContinuousEnv(gym.Env):
         # align date
         df = df.set_index('time', drop=False).pivot(columns=['ticker'])
         # format axis
-        self.df = df.swaplevel(0, 1, axis=1).sort_index(axis=1).reset_index(drop=True)
+        self.df = df.swaplevel(0, 1, axis=1).sort_index(axis=1)
         self.df.dropna(inplace=True)
-        
+        self.df = self.df.reset_index(drop=True)
+
         for ticker in self.tickers:
             _env = VietnamStockContinuousEnv(
                 df = self.df[ticker],

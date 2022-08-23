@@ -37,7 +37,6 @@ def plot_trade_log(data: pd.DataFrame):
 def plot_trade_log_v2(data: pd.DataFrame):
     fig, ax = plt.subplots(2, 1, figsize=(15,8))
     
-    ax[0].grid(True)
     ax[0].set_title('Trade log')
     #TODO: rename
     ax[0].plot(data['time'], data['close'], label='Price')

@@ -4,18 +4,19 @@ from stable_baselines3.common.evaluation import evaluate_policy
 import stock_env
 from stock_env.envs.multi_stock import MultiStockEnv, MultiStockContinuousEnv
 from stable_baselines3.common.env_checker import check_env
-from stock_env.feature.feature_extractor import OneStockFeatures
+from stock_env.feature.feature_extractor import *
 
 if __name__ == '__main__':
     env = 'MultiStockContinuousEnv'
     algo = 'ppo'
     tickers = "FPT SSI VNM".split()
     path = "../stock_datasets/"
-    name = f"{algo}_{env}"
+    feature_extractor = TrendFeatures()
+    name = f"{algo}_{env}_{feature_extractor.__class__.__name__}"
     
     env = MultiStockContinuousEnv(
         tickers=tickers,
-        feature_extractor=OneStockFeatures(),
+        feature_extractor=feature_extractor,
         data_folder_path=path)
     check_env(env)
     
@@ -33,7 +34,7 @@ if __name__ == '__main__':
     )
     
     model.learn(
-        total_timesteps=100000,
+        total_timesteps=1000000,
         eval_env=None,
         eval_freq=0,
         n_eval_episodes=0,

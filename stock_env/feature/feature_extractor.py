@@ -3,10 +3,12 @@ import pandas as pd
 import pandas_ta as ta
 from ..utils import check_col
 import numpy as np
+from ..strategy.trend_strategy import *
+
 class BaseFeaturesExtractor:
     
     @abstractmethod
-    def preprocess(self):
+    def preprocess(self, *args, **kwargs):
         raise NotImplementedError
 
 class OneStockFeatures(BaseFeaturesExtractor):
@@ -17,18 +19,7 @@ class OneStockFeatures(BaseFeaturesExtractor):
     """
     
     def __init__(self):
-        self.strategy = ta.Strategy(
-            name="Standard Technical Indicator in various research of automatic stock trading",
-            description="SMA MACD RSI CCI ADX Bollinger",
-            ta=[
-                {"kind": "sma", "length": 10},
-                {"kind": "rsi", "length": 14},
-                {"kind": "cci", "length": 14},
-                {"kind": "adx", "length": 14},
-                {"kind": "bbands"},
-                {"kind": "macd"},
-            ]
-        )
+        self.strategy = CommonStrategy
         self.required_cols = set('time open high low close volume'.split())
         self.feature_cols = "close ADX_14 SMA_10 RSI_14 CCI_14_0.015 BBL_5_2.0 BBU_5_2.0 MACD_12_26_9".split()
         self.feature_dim = len(self.feature_cols)
@@ -50,26 +41,17 @@ class TrendFeatures(BaseFeaturesExtractor):
     """
     
     def __init__(self):
-        self.strategy = ta.Strategy(
-            name="Trend Signal Strategy",
-            description="SMA 50,200, BBANDS, RSI, MACD and Volume SMA 20",
-            ta=[
-                {"kind": "percent_return", "length": 1},
-                {"kind": "sma", "length": 50},
-                {"kind": "ema", "length": 10},
-                {"kind": "ema", "length": 20},
-                {"kind": "donchian", "lower_length": 10, "upper_length": 10},
-                {"kind": "donchian", "lower_length": 20, "upper_length": 20},
-                {"kind": "donchian", "lower_length": 50, "upper_length": 50},
-                {"kind": "sma", "close": "volume", "length": 20, "prefix": "VOLUME"},
-            ]
-        )
+        self.strategy = TrendStrategy
         self.required_cols = set('time open high low close volume'.split())
-        self.feature_cols = "time close TS_Trends TS_Entries TS_Exits".split()
+        self.feature_cols = \
+            """
+            TS_Trends ADX_20 AROOND_20 AROONU_20 
+            AROONOSC_20 STC_10_10_20_0.5 STCstoch_10_10_20_0.5 
+            NATR_20 RSI_20 CCI_20_0.015
+            """.split()
         self.feature_dim = len(self.feature_cols)
     
     def _create_trend(self, df: pd.DataFrame):
-        df.ta.strategy(self.strategy)
         trend_cond = (
             (df['close'] > df['SMA_50']).astype(int)
             + (df['EMA_10'] > df['EMA_20']).astype(int)
@@ -118,9 +100,12 @@ class TrendFeatures(BaseFeaturesExtractor):
     def preprocess(self, df, asbool=False, return_all=False):
         check_col(df, self.required_cols)
         df.sort_values(by='time', inplace=True)
+        df.ta.strategy(self.strategy)
         df['trends'] = self._create_trend(df)
         df = self._breakout_entry(df)
         df.ta.tsignals(df['trends'], asbool=asbool, append=True)
+        df['CCI_20_0.015'] = df['CCI_20_0.015'] / 100
+        df[['STC_10_10_20_0.5', 'STCstoch_10_10_20_0.5']] = df[['STC_10_10_20_0.5', 'STCstoch_10_10_20_0.5']] / 100
         df.dropna(inplace=True)
         
         if return_all:

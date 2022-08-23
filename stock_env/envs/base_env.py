@@ -166,6 +166,7 @@ class BaseVietnamStockEnv(gym.Env):
         required_col = set('time open high low close volume'.split())
         check_col(df, required_col)
         df = df.sort_values(by='time')
+        df = df.reset_index(drop=True)
         self.df = df
         self.close = df.close
         self.ticker = ticker
