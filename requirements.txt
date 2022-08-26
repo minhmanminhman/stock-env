@@ -7,3 +7,5 @@ finplot
 kaleido
 vectorbt
 ipykernel
+sb3-contrib
+pyglet

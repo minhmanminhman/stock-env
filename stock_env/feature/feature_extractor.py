@@ -47,7 +47,7 @@ class TrendFeatures(BaseFeaturesExtractor):
             """
             TS_Trends ADX_20 AROOND_20 AROONU_20 
             AROONOSC_20 STC_10_10_20_0.5 STCstoch_10_10_20_0.5 
-            NATR_20 RSI_20 CCI_20_0.015
+            NATR_20 RSI_20 CCI_20_0.015 EMA_ratio DC_ratio above_MA
             """.split()
         self.feature_dim = len(self.feature_cols)
     
@@ -106,6 +106,9 @@ class TrendFeatures(BaseFeaturesExtractor):
         df.ta.tsignals(df['trends'], asbool=asbool, append=True)
         df['CCI_20_0.015'] = df['CCI_20_0.015'] / 100
         df[['STC_10_10_20_0.5', 'STCstoch_10_10_20_0.5']] = df[['STC_10_10_20_0.5', 'STCstoch_10_10_20_0.5']] / 100
+        df['EMA_ratio'] = df['EMA_10'] / df['EMA_20']
+        df['DC_ratio'] = df['DCL_10_10'] / df['DCL_50_50']
+        df['above_MA'] = (df['close'] > df['SMA_50']).astype(int)
         df.dropna(inplace=True)
         
         if return_all:

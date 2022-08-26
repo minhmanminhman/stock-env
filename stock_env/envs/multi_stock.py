@@ -236,11 +236,13 @@ class MultiStockContinuousEnv(gym.Env):
             'total_step_reward': [],
             'time': [],
         }
+        self.n_steps = 0
         observations = [env.reset(current_tick=self._current_tick) for env in self.envs]
         return self._get_observation(observations)
     
     def step(self, action: np.ndarray):
         obs, step_reward, done = [], 0, False
+        self.n_steps += 1
         action = self.unscale_action(action)
         action = action.reshape(-1, 1)
         for _action, env in zip(action, self.envs):
@@ -250,6 +252,7 @@ class MultiStockContinuousEnv(gym.Env):
             done = done or _done
         obs = self._get_observation(obs)
         
+        step_reward = self._reward()
         # always update history last
         info = dict(
             total_portfolio_value = self.portfolio_value,
@@ -284,3 +287,9 @@ class MultiStockContinuousEnv(gym.Env):
 
         for key, value in info.items():
             self.histories[key].append(value)
+    
+    def _reward(self):
+        eps = 1e-8
+        cum_log_return = np.log((self.portfolio_value + eps) / (self.init_total_cash + eps))
+        reward = cum_log_return / self.n_steps
+        return reward

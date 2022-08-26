@@ -117,7 +117,7 @@ def plot_signals(df, ax):
     except:
         pass
     else:
-        fplt.plot(buy['time'], buy['low'] * 0.99, ax=ax, color='#408480', style='^', legend='Long')
+        fplt.plot(buy['time'], buy['low'] * 0.99, ax=ax, color='#408480', style='^', legend='Long', width=10)
 
     try:
         sell = df[['time', 'TS_Exits', 'high']].copy()
@@ -128,4 +128,58 @@ def plot_signals(df, ax):
     except:
         pass
     else:
-        fplt.plot(sell['time'], sell['high'] * 1.01, ax=ax, color='#ee0e00', style='v', legend='Short')
+        fplt.plot(sell['time'], sell['high'] * 1.01, ax=ax, color='#ee0e00', style='v', legend='Short', width=10)
+
+def plot_signals_from_history(df, ax):
+    """
+    Plot signals generating from ta.tsignals
+    """
+    # check columns
+    required_col = set('time open high low close volume'.split())
+    check_col(df, required_col)
+    import finplot as fplt
+    
+    # format dataset
+    df = plot_format(df)
+    
+    # plot OHLCV
+    candles = df[['time','open','close','high','low']].copy()
+    fplt.candlestick_ochl(candles, ax=ax)
+    volumes = df[['time','open','close','volume']].copy()
+    fplt.volume_ocv(volumes, ax=ax.overlay())
+
+    # plot signals
+    try:
+        buy = df[df['delta_shares'] > 0]
+        assert len(buy) > 0
+        buy = plot_format(buy)
+        assert len(buy) > 0
+    except:
+        pass
+    else:
+        fplt.plot(buy['time'], buy['low'] * 0.99, ax=ax, color='#408480', style='^', legend='Long', width=3)
+
+    try:
+        sell = df[df['delta_shares'] < 0]
+        assert len(sell) > 0
+        sell = plot_format(sell)
+        assert len(sell) > 0
+    except:
+        pass
+    else:
+        fplt.plot(sell['time'], sell['high'] * 1.01, ax=ax, color='#ee0e00', style='v', legend='Short', width=3)
+
+def plot_quantity(df, ax):
+    """
+    Plot signals generating from ta.tsignals
+    """
+    # check columns
+    required_col = set('time quantity'.split())
+    check_col(df, required_col)
+    import finplot as fplt
+    
+    # format dataset
+    df = plot_format(df)
+    
+    # plot quantity
+    df['quantity'].plot(ax=ax, legend='Quantity')

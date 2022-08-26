@@ -55,6 +55,7 @@ class VietnamStockEnv(BaseVietnamStockEnv):
     
     def reset(self, **kwargs) -> Tuple[np.ndarray, float, bool, dict]:
         obs = super().reset(**kwargs)
+        self.n_steps = 0
         self.history.update({
             'actions': [],
             'delta_shares': [],
@@ -71,6 +72,7 @@ class VietnamStockEnv(BaseVietnamStockEnv):
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
         self._current_tick += 1
+        self.n_steps += 1
         self.position.update_position()
         delta_shares = self._decode_action(action)
         
@@ -150,7 +152,10 @@ class VietnamStockEnv(BaseVietnamStockEnv):
         return np.take(self.quantity_choice, action)
     
     def _calculate_reward(self, delta_vt: float) -> float:
-        return delta_vt
+        eps = 1e-8
+        cum_log_return = np.log((self.portfolio_value + eps) / (self.init_cash + eps))
+        reward = cum_log_return / self.n_steps
+        return reward
     
     def get_history(self):
         history_df = pd.DataFrame(self.history)
@@ -191,6 +196,7 @@ class VietnamStockContinuousEnv(VietnamStockEnv):
             ticker=ticker,
             fee=fee,
         )
+        self.max_quantity = np.inf
         # obs and action
         self.observation_space = spaces.Box(
             low=-np.inf, 
@@ -206,6 +212,7 @@ class VietnamStockContinuousEnv(VietnamStockEnv):
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, dict]:
         self._current_tick += 1
+        self.n_steps += 1
         self.position.update_position()
         action = self.unscale_action(action)
         delta_shares = self._decode_action(action)
