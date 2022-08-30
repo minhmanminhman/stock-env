@@ -56,7 +56,7 @@ class TrendFeatures(BaseFeaturesExtractor):
             (df['close'] > df['SMA_50']).astype(int)
             + (df['EMA_10'] > df['EMA_20']).astype(int)
             + (df['DCL_10_10'] > df['DCL_50_50']).astype(int)
-        ) >= 3
+        ) >= 2
         return trend_cond
     
     def _modify_entry_exit(self, df: pd.DataFrame):
@@ -92,7 +92,7 @@ class TrendFeatures(BaseFeaturesExtractor):
             scalar=1).sum(axis=1).astype(int)
         
         df['entry'] = ((pattern > 0) * volume_breakout * (df['close'] > df['DCU_10_10'].shift())).astype(bool).astype(int)
-        df['exit'] = ((pattern < 0) * volume_breakout ).astype(bool).astype(int)
+        df['exit'] = (pattern < 0).astype(bool).astype(int)
         df['original_trends'] = df['trends']
         df['trends'] = df.groupby((df.trends != df.trends.shift()).cumsum()).apply(self._modify_entry_exit).to_list()
         return df
