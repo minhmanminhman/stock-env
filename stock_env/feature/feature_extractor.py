@@ -8,8 +8,10 @@ from ..strategy.trend_strategy import *
 class BaseFeaturesExtractor:
     
     @abstractmethod
-    def preprocess(self, *args, **kwargs):
-        raise NotImplementedError
+    def preprocess(self, df, *args, **kwargs):
+        check_col(df, self.required_cols)
+        df.sort_values(by='time', inplace=True)
+        return df
 
 class OneStockFeatures(BaseFeaturesExtractor):
     """
@@ -25,8 +27,7 @@ class OneStockFeatures(BaseFeaturesExtractor):
         self.feature_dim = len(self.feature_cols)
     
     def preprocess(self, df):
-        check_col(df, self.required_cols)
-        df.sort_values(by='time', inplace=True)
+        df = super().preprocess(df)
         # create indicators
         df.ta.strategy(self.strategy)
         
@@ -98,8 +99,7 @@ class TrendFeatures(BaseFeaturesExtractor):
         return df
     
     def preprocess(self, df, asbool=False, return_all=False):
-        check_col(df, self.required_cols)
-        df.sort_values(by='time', inplace=True)
+        df = super().preprocess(df)
         df.ta.strategy(self.strategy)
         df['trends'] = self._create_trend(df)
         df = self._breakout_entry(df)
