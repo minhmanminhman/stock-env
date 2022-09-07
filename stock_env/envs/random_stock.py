@@ -5,45 +5,64 @@ from typing import Tuple
 from .base_env import BaseVietnamStockEnv
 from gym import spaces
 from ..feature.feature_extractor import BaseFeaturesExtractor
+import mt4_hst
+from ..utils import check_col
+from .base_env import Position
 
 class RandomStockEnv(BaseVietnamStockEnv):
 
     def __init__(
         self,
-        df: pd.DataFrame,
+        tickers: list,
+        data_folder_path: str,
         feature_extractor: BaseFeaturesExtractor,
         tick_size: float = 0.05,
         lot_size: int = 100,
         init_cash: float = 2e4,
         random_seed: int = None,
-        ticker: str = None,
         fee: float = 0.001,
     ):
-        super().__init__(
-            df=df,
-            init_cash=init_cash,
-            random_seed=random_seed,
-            ticker=ticker,
-        )
-        
+        self.seed(random_seed)
+        self.tickers = tickers
+        self.data_folder_path = data_folder_path
         # market params
         self.lot_size = lot_size
         self.tick_size = tick_size
         self.fee = fee
+        # portfolio params
+        self.init_cash = init_cash
+        self.position = Position()
         
         # setup data
         self.feature_extractor = feature_extractor
-        self.features, self.ohlcv = self._preprocess(self.ohlcv)
-        self._end_tick = self.ohlcv.shape[0] - 1
+        self.stack_features, self.stack_ohlcv = self._preprocess()
+        # reset env need assign these
+        self.ohlcv = None
+        self.features = None
         
         # obs and action
         self.obs_dim = self.feature_extractor.feature_dim + 1
         self.observation_space = spaces.Box(-np.inf, np.inf, (self.obs_dim,), np.float32)
         self.action_space = spaces.Box(-1, 1, (1,), np.float32)
+        
+        self._start_tick = 0
+        # update these variables in reset method
+        self.n_steps = None
+        self.cash = None
+        self.done = None
+        self.history = None        
+        self._current_tick = None
+        self._end_tick = None
+        self._end_episode_tick = None
     
-    def reset(self, **kwargs) -> Tuple[np.ndarray, float, bool, dict]:
-        obs = super().reset(**kwargs)
-        self.history.update({
+    def reset(self, eval_mode=False) -> Tuple[np.ndarray, float, bool, dict]:
+        self._randomize_period(eval_mode=eval_mode)
+        self.done = False
+        self.n_steps = 0
+        self.cash = self.init_cash
+        self.position.reset()
+        self.history = {
+            'quantity': [],
             'actions': [],
             'delta_shares': [],
             'total_profit': [],
@@ -51,9 +70,10 @@ class RandomStockEnv(BaseVietnamStockEnv):
             'nav': [],
             'cash': [],
             'time': [],
-            'step_reward': []
-        })
-        return obs
+            'step_reward': [],
+            'ticker': []
+        }
+        return self._get_observation()
 
     def step(self, action: float) -> Tuple[np.ndarray, float, bool, dict]:
         self._current_tick += 1
@@ -79,14 +99,28 @@ class RandomStockEnv(BaseVietnamStockEnv):
             cash = self.cash,
             time = self.ohlcv.time.iloc[self._current_tick],
             step_reward = step_reward,
+            ticker = self.episode_ticker
         )
         self._update_history(info)
         return self._get_observation(), step_reward, self._is_done(), info
     
-    def _preprocess(self, df):
-        features = self.feature_extractor.preprocess(df)
-        df, _ = df.align(features, join='inner', axis=0)
-        return features, df
+    def _preprocess(self):
+        df = pd.DataFrame()
+        required_col = set('time open high low close volume'.split())
+        for ticker in self.tickers:
+            _df = mt4_hst.read_hst(self.data_folder_path + ticker + "1440.hst")
+            check_col(_df, required_col)
+            _df.sort_values(by='time', inplace=True)
+            _df['ticker'] = ticker
+            df = pd.concat([df, _df])
+        
+        grouped_ohlcv = df.groupby('ticker')
+        stack_features = grouped_ohlcv.apply(lambda x: self.feature_extractor.preprocess(x))
+        
+        stack_ohlcv = df.set_index(keys=['ticker', df.index])
+        stack_ohlcv, _ = stack_ohlcv.align(stack_features, join='inner', axis=0)
+        
+        return stack_features, stack_ohlcv
 
     def _modify_quantity(self, delta_shares: int) -> int:
         """
@@ -107,9 +141,31 @@ class RandomStockEnv(BaseVietnamStockEnv):
 
     def _get_observation(self) -> np.ndarray:
         features = self.features.iloc[self._current_tick].values
-        quantity = self.position.quantity
-        obs = np.append(features, quantity).astype(np.float32)
+        cash_percent = self.cash / self.portfolio_value
+        obs = np.append(features, cash_percent).astype(np.float32)
         return obs
+    
+    def _randomize_period(self, max_timesteps: int = 250, eval_mode: bool = False):
+        
+        # random choose stock and start period
+        self.episode_ticker = np.random.choice(self.tickers, size=1).item()
+        self.ohlcv = self.stack_ohlcv.loc[self.episode_ticker]
+        self.features = self.stack_features.loc[self.episode_ticker]
+        self._end_tick = self.ohlcv.shape[0] - 1
+        
+        if eval_mode:
+            self._current_tick = 0
+            self._end_episode_tick = self._end_tick
+        else:
+            # # method 1
+            # self._current_tick = np.random.randint(self._start_tick, self._end_tick)
+            # # train 500 timesteps or until the end
+            # self._end_episode_tick = min(self._current_tick + max_timesteps, self._end_tick)
+            
+            # method 2
+            start_idx = np.arange(start=0, stop=self.ohlcv.shape[0], step=max_timesteps)
+            self._current_tick = np.random.choice(start_idx)
+            self._end_episode_tick = min(self._current_tick + max_timesteps, self._end_tick)
     
     def _total_cost(self, delta_shares: int) -> float:
         if delta_shares >= 0:
