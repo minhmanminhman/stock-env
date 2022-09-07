@@ -8,8 +8,10 @@ from ..strategy.trend_strategy import *
 class BaseFeaturesExtractor:
     
     @abstractmethod
-    def preprocess(self, *args, **kwargs):
-        raise NotImplementedError
+    def preprocess(self, df, *args, **kwargs):
+        check_col(df, self.required_cols)
+        df.sort_values(by='time', inplace=True)
+        return df
 
 class OneStockFeatures(BaseFeaturesExtractor):
     """
@@ -25,8 +27,7 @@ class OneStockFeatures(BaseFeaturesExtractor):
         self.feature_dim = len(self.feature_cols)
     
     def preprocess(self, df):
-        check_col(df, self.required_cols)
-        df.sort_values(by='time', inplace=True)
+        df = super().preprocess(df)
         # create indicators
         df.ta.strategy(self.strategy)
         
@@ -56,7 +57,7 @@ class TrendFeatures(BaseFeaturesExtractor):
             (df['close'] > df['SMA_50']).astype(int)
             + (df['EMA_10'] > df['EMA_20']).astype(int)
             + (df['DCL_10_10'] > df['DCL_50_50']).astype(int)
-        ) >= 3
+        ) >= 2
         return trend_cond
     
     def _modify_entry_exit(self, df: pd.DataFrame):
@@ -92,14 +93,13 @@ class TrendFeatures(BaseFeaturesExtractor):
             scalar=1).sum(axis=1).astype(int)
         
         df['entry'] = ((pattern > 0) * volume_breakout * (df['close'] > df['DCU_10_10'].shift())).astype(bool).astype(int)
-        df['exit'] = ((pattern < 0) * volume_breakout ).astype(bool).astype(int)
+        df['exit'] = (pattern < 0).astype(bool).astype(int)
         df['original_trends'] = df['trends']
         df['trends'] = df.groupby((df.trends != df.trends.shift()).cumsum()).apply(self._modify_entry_exit).to_list()
         return df
     
     def preprocess(self, df, asbool=False, return_all=False):
-        check_col(df, self.required_cols)
-        df.sort_values(by='time', inplace=True)
+        df = super().preprocess(df)
         df.ta.strategy(self.strategy)
         df['trends'] = self._create_trend(df)
         df = self._breakout_entry(df)

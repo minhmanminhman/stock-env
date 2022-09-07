@@ -40,10 +40,8 @@ class VietnamStockEnv(BaseVietnamStockEnv):
         self.feature_extractor = feature_extractor
         
         # setup data
-        self.features, self.df = self._preprocess(self.df)
-        self.close = self.df.close
-        self._end_tick = self.df.shape[0] - 1
-        self.ticker = ticker
+        self.features, self.ohlcv = self._preprocess(self.ohlcv)
+        self._end_tick = self.ohlcv.shape[0] - 1
         
         # obs and action
         self.observation_space = spaces.Box(
@@ -55,12 +53,10 @@ class VietnamStockEnv(BaseVietnamStockEnv):
     
     def reset(self, **kwargs) -> Tuple[np.ndarray, float, bool, dict]:
         obs = super().reset(**kwargs)
-        self.n_steps = 0
         self.history.update({
             'actions': [],
             'delta_shares': [],
             'delta_vt': [],
-            'total_reward': [],
             'total_profit': [],
             'portfolio_value': [],
             'nav': [],
@@ -84,9 +80,7 @@ class VietnamStockEnv(BaseVietnamStockEnv):
         
         # calculate reward
         delta_vt = self._delta_vt(modified_delta_shares)
-        step_reward = self._calculate_reward(delta_vt)
-        self.total_reward += step_reward
-        
+        step_reward = self._calculate_reward()        
         
         # always update history last
         info = dict(
@@ -94,12 +88,11 @@ class VietnamStockEnv(BaseVietnamStockEnv):
             delta_shares = modified_delta_shares,
             quantity = self.position.quantity,
             delta_vt = delta_vt,
-            total_reward = self.total_reward,
             total_profit = self.total_profit,
             portfolio_value = self.portfolio_value,
             nav = self.nav,
             cash = self.cash,
-            time = self.df.time.iloc[self._current_tick],
+            time = self.ohlcv.time.iloc[self._current_tick],
             step_reward = step_reward,
         )
         self._update_history(info)
@@ -120,11 +113,11 @@ class VietnamStockEnv(BaseVietnamStockEnv):
             if _quantity + _delta_shares > self.max_quantity:
                 delta_shares = max(self.max_quantity - _quantity, 0)
             
-            _buy_value = self.prev_price * delta_shares + self._total_cost(delta_shares)
+            _buy_value = self.open * delta_shares + self._total_cost(delta_shares)
             
             while _buy_value > self.cash:
                 delta_shares = (int(delta_shares / self.lot_size) - 1) * self.lot_size
-                _buy_value = self.prev_price * delta_shares + self._total_cost(delta_shares)
+                _buy_value = self.open * delta_shares + self._total_cost(delta_shares)
                 
         else: # short
             short_quantity = min(self.position.on_hand, abs(_delta_shares))
@@ -139,19 +132,19 @@ class VietnamStockEnv(BaseVietnamStockEnv):
     
     def _total_cost(self, delta_shares: int) -> float:
         if delta_shares >= 0:
-            cost = delta_shares * self.prev_price * self.fee
+            cost = delta_shares * self.open * self.fee
         else:
             # selling stock has PIT fee = 0.1%
-            cost = abs(delta_shares) * self.prev_price * (self.fee + 0.001)
+            cost = abs(delta_shares) * self.open * (self.fee + 0.001)
         return cost
     
     def _delta_vt(self, delta_shares: int) -> float:
-        return self.position.quantity * (self.price - self.prev_price) - self._total_cost(delta_shares)
+        return self.position.quantity * (self.close - self.open) - self._total_cost(delta_shares)
     
     def _decode_action(self, action: int) -> int:
         return np.take(self.quantity_choice, action)
     
-    def _calculate_reward(self, delta_vt: float) -> float:
+    def _calculate_reward(self, *args, **kwargs) -> float:
         eps = 1e-8
         cum_log_return = np.log((self.portfolio_value + eps) / (self.init_cash + eps))
         reward = cum_log_return / self.n_steps
@@ -160,12 +153,12 @@ class VietnamStockEnv(BaseVietnamStockEnv):
     def get_history(self):
         history_df = pd.DataFrame(self.history)
         history_df = history_df.astype({'time':'datetime64[ns]'})
-        data = self.df.merge(history_df, how='inner', on='time')
+        data = self.ohlcv.merge(history_df, how='inner', on='time')
         return data
 
     def _update_portfolio(self, delta_shares: int) -> float:
-        # buy/sell at close price
-        self.cash -= (delta_shares * self.prev_price + self._total_cost(delta_shares))
+        # buy/sell at open price
+        self.cash -= (delta_shares * self.open + self._total_cost(delta_shares))
         assert self.cash >= 0
 
 
@@ -225,8 +218,7 @@ class VietnamStockContinuousEnv(VietnamStockEnv):
         
         # calculate reward
         delta_vt = self._delta_vt(modified_delta_shares)
-        step_reward = self._calculate_reward(delta_vt)
-        self.total_reward += step_reward
+        step_reward = self._calculate_reward()
         
         # always update history last
         info = dict(
@@ -234,12 +226,11 @@ class VietnamStockContinuousEnv(VietnamStockEnv):
             delta_shares = modified_delta_shares,
             quantity = self.position.quantity,
             delta_vt = delta_vt,
-            total_reward = self.total_reward,
             total_profit = self.total_profit,
             portfolio_value = self.portfolio_value,
             nav = self.nav,
             cash = self.cash,
-            time = self.df.time.iloc[self._current_tick],
+            time = self.ohlcv.time.iloc[self._current_tick],
             step_reward = step_reward,
         )
         self._update_history(info)
@@ -256,7 +247,7 @@ class VietnamStockContinuousEnv(VietnamStockEnv):
         diff_value = self.cash - target_cash
         # if diff_value > 0 -> buy more shares
         # if diff_value < 0 -> sell shares
-        diff_shares = int((diff_value / self.prev_price) / self.lot_size) * self.lot_size
+        diff_shares = int((diff_value / self.open) / self.lot_size) * self.lot_size
         return diff_shares
         
     def unscale_action(self, scaled_action: np.ndarray) -> np.ndarray:

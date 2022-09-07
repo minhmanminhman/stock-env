@@ -167,9 +167,9 @@ class BaseVietnamStockEnv(gym.Env):
         check_col(df, required_col)
         df = df.sort_values(by='time')
         df = df.reset_index(drop=True)
-        self.df = df
-        self.close = df.close
+        self.ohlcv = df
         self.ticker = ticker
+        
         # portfolio params
         self.init_cash = init_cash
         self.cash = None
@@ -177,10 +177,11 @@ class BaseVietnamStockEnv(gym.Env):
 
         # episode
         self._start_tick = 0
-        self._end_tick = self.df.shape[0] - 1
+        self._end_tick = self.ohlcv.shape[0] - 1
+        self._end_episode_tick = None
         self._current_tick = None
+        self.n_steps = None
         self.done = None
-        self.total_reward = None
         self.history = None
     
     @property
@@ -193,15 +194,15 @@ class BaseVietnamStockEnv(gym.Env):
     
     @property
     def nav(self):
-        return self.position.quantity * self.price
+        return self.position.quantity * self.close
 
     @property
-    def prev_price(self):
-        return self.close.iloc[self._current_tick-1].item()
+    def open(self):
+        return self.ohlcv.open.iloc[self._current_tick].item()
     
     @property
-    def price(self):
-        return self.close.iloc[self._current_tick].item()
+    def close(self):
+        return self.ohlcv.close.iloc[self._current_tick].item()
 
     def seed(self, seed=None):
         self.np_random, seed = seeding.np_random(seed)
@@ -216,7 +217,8 @@ class BaseVietnamStockEnv(gym.Env):
             raise NotImplementedError
         
         self.done = False
-        self.total_reward = 0
+        self.n_steps = 0
+        self._end_episode_tick = self._end_tick
         self.cash = self.init_cash
         self.position.reset()
         self.history = {'quantity': []}
@@ -230,7 +232,7 @@ class BaseVietnamStockEnv(gym.Env):
             self.history[key].append(value)
     
     def _is_done(self):
-        if (self._current_tick == self._end_tick) \
+        if (self._current_tick == self._end_episode_tick) \
             or (self.portfolio_value <= 0):
             return True
         return False
