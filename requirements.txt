@@ -9,3 +9,5 @@ vectorbt
 ipykernel
 sb3-contrib
 pyglet
+ipywidgets==7.7.1 
+jupyterlab-widgets==1.1.1

@@ -45,8 +45,8 @@ class RandomStockEnv(BaseVietnamStockEnv):
         self.observation_space = spaces.Box(-np.inf, np.inf, (self.obs_dim,), np.float32)
         self.action_space = spaces.Box(-1, 1, (1,), np.float32)
         
-        self._start_tick = 0
         # update these variables in reset method
+        self._start_tick = None
         self.n_steps = None
         self.cash = None
         self.done = None
@@ -154,8 +154,8 @@ class RandomStockEnv(BaseVietnamStockEnv):
         self._end_tick = self.ohlcv.shape[0] - 1
         
         if eval_mode:
-            self._current_tick = 0
-            self._end_episode_tick = self._end_tick
+            start_tick = 0
+            end_tick = self._end_tick
         else:
             # # method 1
             # self._current_tick = np.random.randint(self._start_tick, self._end_tick)
@@ -163,9 +163,12 @@ class RandomStockEnv(BaseVietnamStockEnv):
             # self._end_episode_tick = min(self._current_tick + max_timesteps, self._end_tick)
             
             # method 2
-            start_idx = np.arange(start=0, stop=self.ohlcv.shape[0], step=max_timesteps)
-            self._current_tick = np.random.choice(start_idx)
-            self._end_episode_tick = min(self._current_tick + max_timesteps, self._end_tick)
+            start_idxes = np.arange(start=0, stop=self.ohlcv.shape[0], step=max_timesteps)
+            start_tick = np.random.choice(start_idxes)
+            end_tick = min(start_tick + max_timesteps, self._end_tick)
+        
+        self._start_tick = self._current_tick = start_tick
+        self._end_episode_tick = end_tick
     
     def _total_cost(self, delta_shares: int) -> float:
         if delta_shares >= 0:
@@ -185,14 +188,30 @@ class RandomStockEnv(BaseVietnamStockEnv):
     
     def _calculate_reward(self, *args, **kwargs) -> float:
         eps = 1e-8
-        cum_log_return = np.log((self.portfolio_value + eps) / (self.init_cash + eps))
-        reward = cum_log_return / self.n_steps
+        cum_return = (self.portfolio_value + eps) / (self.init_cash + eps)
+        # compare with holding
+        cum_return_from_holding = self.close / self.ohlcv.close.iloc[self._start_tick].item()
+        diff = cum_return - cum_return_from_holding
+        
+        # method 1
+        # reward = diff / self.n_steps
+        
+        # method 2
+        if (diff > 0) and (cum_return > 0):
+            reward = 2
+        elif (diff > 0) and (cum_return < 0):
+            reward = 1
+        elif (diff > 0) and (cum_return == 0):
+            reward = 0
+        else:
+            reward = -2
         return reward
     
     def get_history(self):
         history_df = pd.DataFrame(self.history)
         history_df = history_df.astype({'time':'datetime64[ns]'})
         data = self.ohlcv.merge(history_df, how='inner', on='time')
+        data = data.join(self.features)
         return data
 
     def _update_portfolio(self, delta_shares: int) -> float:

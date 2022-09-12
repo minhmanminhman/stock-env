@@ -1,7 +1,4 @@
-from stable_baselines3.dqn import DQN
-from stable_baselines3.ppo import PPO
-from stable_baselines3.sac import SAC
-
+from stable_baselines3 import DQN, PPO, SAC
 from stable_baselines3.common.evaluation import evaluate_policy
 from stock_env.envs.vn_stock_env import *
 from stock_env.feature.feature_extractor import *
@@ -26,22 +23,6 @@ if __name__ == '__main__':
     )
     # env = BufferWrapper(env, n_steps)
     check_env(env)
-    # model = DQN(
-    #     'MlpPolicy',
-    #     env=env, 
-    #     learning_rate=1e-3,
-    #     gamma=0.999,
-    #     buffer_size=100000,
-    #     batch_size=128,
-    #     train_freq=(4, "step"),
-    #     gradient_steps=1,
-    #     exploration_initial_eps=1,
-    #     exploration_final_eps=0.1,
-    #     learning_starts=5000,
-    #     target_update_interval=1000,
-    #     tensorboard_log='log',
-    #     verbose=1,
-    # )
     model = PPO(
         'MlpPolicy',
         env=env, 
@@ -53,20 +34,7 @@ if __name__ == '__main__':
         tensorboard_log='log',
         verbose=0,
     )
-    # model = SAC(
-    #     'MlpPolicy',
-    #     env=env,
-    #     learning_rate=1e-3,
-    #     gamma=0.999,
-    #     buffer_size=100000,
-    #     batch_size=128,
-    #     train_freq=(4, "step"),
-    #     gradient_steps=1,
-    #     learning_starts=5000,
-    #     target_update_interval=1000,
-    #     tensorboard_log='log',
-    #     verbose=1,
-    # )
+
     print(model.policy)
     model.learn(
         total_timesteps=100000,

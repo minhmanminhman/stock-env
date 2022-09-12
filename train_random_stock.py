@@ -5,6 +5,8 @@ from stock_env.feature.feature_extractor import *
 import mt4_hst
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.utils import get_linear_fn
+from stock_env.wrappers.stack_obs import BufferWrapper
+from stable_baselines3.common.vec_env import DummyVecEnv
 
 def name_generate(env, algo, feature_extractor, ticker, postfix=None):
     env_name = env.__class__.__name__
@@ -21,36 +23,34 @@ if __name__ == '__main__':
     path = "../stock_datasets/"
     tickers = "SSI VND HCM MBS VCI".split()
     postfix = "finservice"
-    
+    n_steps = 5
     feature_extractor = TrendFeatures()
-    env = RandomStockEnv(
+    env_kwargs = dict(
         tickers = tickers,
         data_folder_path = path,
-        feature_extractor = feature_extractor
+        feature_extractor = feature_extractor,
     )
+    env = BufferWrapper(RandomStockEnv(**env_kwargs), n_steps)
+    # policy_kwargs = dict(net_arch=[128, dict(vf=[128, 256], pi=[128, 256])])
+    # policy_kwargs = dict(net_arch=[32, dict(vf=[64, 128], pi=[64, 128])])
     
-    policy_kwargs = dict(net_arch=[64, 128, 128])
-    model = SAC(
+    model = PPO(
         'MlpPolicy',
-        env=env,
-        learning_rate=7e-5,
-        gamma=0.99,
-        buffer_size=100000,
-        batch_size=128,
-        train_freq=(4, "step"),
-        gradient_steps=1,
-        learning_starts=5000,
-        target_update_interval=1000,
+        env=env, 
+        learning_rate=7e-4,
+        ent_coef=0.01,
+        # n_steps=20,
+        # batch_size=20,
+        # gamma=0.99,
         tensorboard_log='log',
-        verbose=1,
-        policy_kwargs=policy_kwargs,
+        verbose=0,
     )
     print(model.policy)
     
     name = name_generate(env, model, feature_extractor, tickers, postfix)
     try:
         model.learn(
-            total_timesteps=500000,
+            total_timesteps=50000,
             eval_env=None,
             eval_freq=0,
             n_eval_episodes=0,
@@ -61,15 +61,5 @@ if __name__ == '__main__':
 
     model.save(f'log/{name}')
 
-    mean, std = evaluate_policy(model, env, n_eval_episodes=5)
+    mean, std = evaluate_policy(model, env, n_eval_episodes=10)
     print(f"Mean reward: {mean:.2f} +/- {std: .2f}")
-
-    # run model to get detailed information in the enviroment
-    done = False
-    obs = env.reset(eval_mode=True)
-    while not done:
-        action, _ = model.predict(obs, deterministic=True)
-        obs, _, done, _ = env.step(action)
-
-    # get data
-    env.get_history().to_csv(f'temp/history/{name}.csv', index=False)
