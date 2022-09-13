@@ -4,12 +4,10 @@ TrendStrategy = ta.Strategy(
     name="Trend Signal Strategy",
     description="SMA 50,200, BBANDS, RSI, MACD and Volume SMA 20",
     ta=[
-        {"kind": "percent_return", "length": 1},
         {"kind": "sma", "length": 50},
         {"kind": "ema", "length": 10},
         {"kind": "ema", "length": 20},
         {"kind": "donchian", "lower_length": 10, "upper_length": 10},
-        {"kind": "donchian", "lower_length": 20, "upper_length": 20},
         {"kind": "donchian", "lower_length": 50, "upper_length": 50},
         {"kind": "sma", "close": "volume", "length": 20, "prefix": "VOLUME"},
         # additional indicators

@@ -1,83 +1,80 @@
 import numpy as np
 import pandas as pd
-import pandas_ta as ta
 from typing import Tuple
-from .base_env import BaseVietnamStockEnv
 from gym import spaces
-from ..feature.feature_extractor import BaseFeaturesExtractor
-import mt4_hst
-from ..utils import check_col
+
+from .base_env import BaseVietnamStockEnv
 from .base_env import Position
+from ..data_loader import BaseDataLoader
 
 class RandomStockEnv(BaseVietnamStockEnv):
 
     def __init__(
         self,
-        tickers: list,
-        data_folder_path: str,
-        feature_extractor: BaseFeaturesExtractor,
-        tick_size: float = 0.05,
+        data_loader: BaseDataLoader,
         lot_size: int = 100,
         init_cash: float = 2e4,
         random_seed: int = None,
         fee: float = 0.001,
     ):
-        self.seed(random_seed)
-        self.tickers = tickers
-        self.data_folder_path = data_folder_path
+        super().__init__(
+            data_loader=data_loader,
+            init_cash=init_cash,
+            random_seed=random_seed
+        )
         # market params
         self.lot_size = lot_size
-        self.tick_size = tick_size
         self.fee = fee
-        # portfolio params
-        self.init_cash = init_cash
         self.position = Position()
-        
-        # setup data
-        self.feature_extractor = feature_extractor
-        self.stack_features, self.stack_ohlcv = self._preprocess()
-        # reset env need assign these
-        self.ohlcv = None
-        self.features = None
-        
         # obs and action
-        self.obs_dim = self.feature_extractor.feature_dim + 1
+        self.obs_dim = self.data_loader.feature_dim + 1
         self.observation_space = spaces.Box(-np.inf, np.inf, (self.obs_dim,), np.float32)
         self.action_space = spaces.Box(-1, 1, (1,), np.float32)
         
         # update these variables in reset method
-        self._start_tick = None
         self.n_steps = None
         self.cash = None
         self.done = None
-        self.history = None        
-        self._current_tick = None
-        self._end_tick = None
-        self._end_episode_tick = None
+        self.history = None
     
-    def reset(self, eval_mode=False) -> Tuple[np.ndarray, float, bool, dict]:
-        self._randomize_period(eval_mode=eval_mode)
+    @property
+    def portfolio_value(self):
+        return self.nav + self.cash
+    
+    @property
+    def nav(self):
+        return self.position.quantity * self.close
+
+    @property
+    def open(self):
+        return self.data_loader.current_ohlcv.open.item()
+    
+    @property
+    def close(self):
+        return self.data_loader.current_ohlcv.close.item()
+
+    def reset(self) -> Tuple[np.ndarray, float, bool, dict]:
+        self.position.reset()
         self.done = False
         self.n_steps = 0
         self.cash = self.init_cash
-        self.position.reset()
         self.history = {
             'quantity': [],
             'actions': [],
             'delta_shares': [],
-            'total_profit': [],
             'portfolio_value': [],
             'nav': [],
             'cash': [],
             'time': [],
             'step_reward': [],
-            'ticker': []
         }
-        return self._get_observation()
+        features = self.data_loader.reset()
+        self.start_close_price = self.data_loader.current_ohlcv.close.item()
+        return self._get_observation(features)
 
     def step(self, action: float) -> Tuple[np.ndarray, float, bool, dict]:
-        self._current_tick += 1
         self.n_steps += 1
+        features = self.data_loader.step()
         self.position.update_position()
         action = self.unscale_action(action)
         delta_shares = self._decode_action(action)
@@ -93,34 +90,14 @@ class RandomStockEnv(BaseVietnamStockEnv):
             actions = action.item(),
             delta_shares = modified_delta_shares,
             quantity = self.position.quantity,
-            total_profit = self.total_profit,
             portfolio_value = self.portfolio_value,
             nav = self.nav,
             cash = self.cash,
-            time = self.ohlcv.time.iloc[self._current_tick],
+            time = self.data_loader.current_ohlcv.time,
             step_reward = step_reward,
-            ticker = self.episode_ticker
         )
         self._update_history(info)
-        return self._get_observation(), step_reward, self._is_done(), info
-    
-    def _preprocess(self):
-        df = pd.DataFrame()
-        required_col = set('time open high low close volume'.split())
-        for ticker in self.tickers:
-            _df = mt4_hst.read_hst(self.data_folder_path + ticker + "1440.hst")
-            check_col(_df, required_col)
-            _df.sort_values(by='time', inplace=True)
-            _df['ticker'] = ticker
-            df = pd.concat([df, _df])
-        
-        grouped_ohlcv = df.groupby('ticker')
-        stack_features = grouped_ohlcv.apply(lambda x: self.feature_extractor.preprocess(x))
-        
-        stack_ohlcv = df.set_index(keys=['ticker', df.index])
-        stack_ohlcv, _ = stack_ohlcv.align(stack_features, join='inner', axis=0)
-        
-        return stack_features, stack_ohlcv
+        return self._get_observation(features), step_reward, self._is_done(), info
 
     def _modify_quantity(self, delta_shares: int) -> int:
         """
@@ -139,36 +116,10 @@ class RandomStockEnv(BaseVietnamStockEnv):
             delta_shares = -short_quantity
         return delta_shares
 
-    def _get_observation(self) -> np.ndarray:
-        features = self.features.iloc[self._current_tick].values
+    def _get_observation(self, features: np.ndarray) -> np.ndarray:
         cash_percent = self.cash / self.portfolio_value
         obs = np.append(features, cash_percent).astype(np.float32)
         return obs
-    
-    def _randomize_period(self, max_timesteps: int = 250, eval_mode: bool = False):
-        
-        # random choose stock and start period
-        self.episode_ticker = np.random.choice(self.tickers, size=1).item()
-        self.ohlcv = self.stack_ohlcv.loc[self.episode_ticker]
-        self.features = self.stack_features.loc[self.episode_ticker]
-        self._end_tick = self.ohlcv.shape[0] - 1
-        
-        if eval_mode:
-            start_tick = 0
-            end_tick = self._end_tick
-        else:
-            # # method 1
-            # self._current_tick = np.random.randint(self._start_tick, self._end_tick)
-            # # train 500 timesteps or until the end
-            # self._end_episode_tick = min(self._current_tick + max_timesteps, self._end_tick)
-            
-            # method 2
-            start_idxes = np.arange(start=0, stop=self.ohlcv.shape[0], step=max_timesteps)
-            start_tick = np.random.choice(start_idxes)
-            end_tick = min(start_tick + max_timesteps, self._end_tick)
-        
-        self._start_tick = self._current_tick = start_tick
-        self._end_episode_tick = end_tick
     
     def _total_cost(self, delta_shares: int) -> float:
         if delta_shares >= 0:
@@ -190,7 +141,7 @@ class RandomStockEnv(BaseVietnamStockEnv):
         eps = 1e-8
         cum_return = (self.portfolio_value + eps) / (self.init_cash + eps)
         # compare with holding
-        cum_return_from_holding = self.close / self.ohlcv.close.iloc[self._start_tick].item()
+        cum_return_from_holding = self.close / self.start_close_price
         diff = cum_return - cum_return_from_holding
         
         # method 1
@@ -209,15 +160,22 @@ class RandomStockEnv(BaseVietnamStockEnv):
     
     def get_history(self):
         history_df = pd.DataFrame(self.history)
+        history_df['ticker'] = self.data_loader.ticker
         history_df = history_df.astype({'time':'datetime64[ns]'})
-        data = self.ohlcv.merge(history_df, how='inner', on='time')
-        data = data.join(self.features)
+        data = self.data_loader.ohlcv.merge(history_df, how='inner', on='time')
+        data = data.join(self.data_loader.features)
         return data
 
     def _update_portfolio(self, delta_shares: int) -> float:
         # buy/sell at open price
         self.cash -= (delta_shares * self.open + self._total_cost(delta_shares))
         assert self.cash >= 0
+        
+    def _is_done(self):
+        if self.data_loader.is_done \
+            or (self.portfolio_value <= 0):
+            return True
+        return False
     
     def unscale_action(self, scaled_action: np.ndarray) -> np.ndarray:
         """

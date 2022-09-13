@@ -1,10 +1,9 @@
 import gym
 import numpy as np
-from collections import deque
 
-class BufferWrapper(gym.ObservationWrapper):
+class StackObs(gym.ObservationWrapper):
     def __init__(self, env, n_steps, dtype=np.float32):
-        super(BufferWrapper, self).__init__(env)
+        super(StackObs, self).__init__(env)
         self.dtype = dtype
         self.n_steps = n_steps
         old_space = env.observation_space

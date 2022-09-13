@@ -1,12 +1,12 @@
-from stable_baselines3 import PPO, SAC
+from stable_baselines3 import PPO
 from stable_baselines3.common.evaluation import evaluate_policy
+
 from stock_env.envs import *
+from stock_env.feature import feature_extractor
 from stock_env.feature.feature_extractor import *
-import mt4_hst
-from stable_baselines3.common.env_checker import check_env
-from stable_baselines3.common.utils import get_linear_fn
-from stock_env.wrappers.stack_obs import BufferWrapper
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stock_env.wrappers import StackObs
+from stock_env.envs import RandomStockEnv
+from stock_env.data_loader import RandomStockLoader
 
 def name_generate(env, algo, feature_extractor, ticker, postfix=None):
     env_name = env.__class__.__name__
@@ -24,15 +24,16 @@ if __name__ == '__main__':
     tickers = "SSI VND HCM MBS VCI".split()
     postfix = "finservice"
     n_steps = 5
-    feature_extractor = TrendFeatures()
-    env_kwargs = dict(
+    feature_extractor = TrendFeatures
+    
+    data_loader = RandomStockLoader(
         tickers = tickers,
-        data_folder_path = path,
-        feature_extractor = feature_extractor,
+        data_folder_path = "../stock_datasets/",
+        feature_extractor = TrendFeatures
     )
-    env = BufferWrapper(RandomStockEnv(**env_kwargs), n_steps)
-    # policy_kwargs = dict(net_arch=[128, dict(vf=[128, 256], pi=[128, 256])])
-    # policy_kwargs = dict(net_arch=[32, dict(vf=[64, 128], pi=[64, 128])])
+
+    env = RandomStockEnv(data_loader)
+    env = StackObs(env, 5)
     
     model = PPO(
         'MlpPolicy',

@@ -1,17 +1,16 @@
 from abc import abstractmethod
 import pandas as pd
 import pandas_ta as ta
+import talib
 from ..utils import check_col
 import numpy as np
-from ..strategy.trend_strategy import *
+from ..strategy import *
 
 class BaseFeaturesExtractor:
-    
+
     @abstractmethod
     def preprocess(self, df, *args, **kwargs):
-        check_col(df, self.required_cols)
-        df.sort_values(by='time', inplace=True)
-        return df
+        raise NotImplementedError
 
 class OneStockFeatures(BaseFeaturesExtractor):
     """
@@ -27,7 +26,8 @@ class OneStockFeatures(BaseFeaturesExtractor):
         self.feature_dim = len(self.feature_cols)
     
     def preprocess(self, df):
-        df = super().preprocess(df)
+        check_col(df, self.required_cols)
+        df.sort_values(by='time', inplace=True)
         # create indicators
         df.ta.strategy(self.strategy)
         
@@ -42,13 +42,12 @@ class TrendFeatures(BaseFeaturesExtractor):
     """
     
     def __init__(self):
-        self.strategy = TrendStrategy
         self.required_cols = set('time open high low close volume'.split())
         self.feature_cols = \
             """
             TS_Trends ADX_20 AROOND_20 AROONU_20 
             AROONOSC_20 STC_10_10_20_0.5 STCstoch_10_10_20_0.5 
-            NATR_20 RSI_20 CCI_20_0.015 EMA_ratio DC_ratio above_MA
+            NATR_20 RSI_20 CCI_20_0.015 EMA_ratio LOW_ratio above_MA
             """.split()
         self.feature_dim = len(self.feature_cols)
     
@@ -56,7 +55,7 @@ class TrendFeatures(BaseFeaturesExtractor):
         trend_cond = (
             (df['close'] > df['SMA_50']).astype(int)
             + (df['EMA_10'] > df['EMA_20']).astype(int)
-            + (df['DCL_10_10'] > df['DCL_50_50']).astype(int)
+            + (df['LOW_10'] > df['LOW_50']).astype(int)
         ) >= 2
         return trend_cond
     
@@ -92,23 +91,37 @@ class TrendFeatures(BaseFeaturesExtractor):
             name=["closingmarubozu", "marubozu", "engulfing", "longline"], 
             scalar=1).sum(axis=1).astype(int)
         
-        df['entry'] = ((pattern > 0) * volume_breakout * (df['close'] > df['DCU_10_10'].shift())).astype(bool).astype(int)
+        df['entry'] = ((pattern > 0) * volume_breakout * (df['close'] > df['HIGH_10'].shift())).astype(bool).astype(int)
         df['exit'] = (pattern < 0).astype(bool).astype(int)
         df['original_trends'] = df['trends']
         df['trends'] = df.groupby((df.trends != df.trends.shift()).cumsum()).apply(self._modify_entry_exit).to_list()
         return df
     
     def preprocess(self, df, asbool=False, return_all=False):
-        df = super().preprocess(df)
-        df.ta.strategy(self.strategy)
-        df['trends'] = self._create_trend(df)
-        df = self._breakout_entry(df)
-        df.ta.tsignals(df['trends'], asbool=asbool, append=True)
+        check_col(df, self.required_cols)
+        df.sort_values('time', inplace=True)
+        df.ta.sma(length=50, append=True)
+        df.ta.ema(length=10, append=True)
+        df.ta.ema(length=20, append=True)
+        df['LOW_10'] = talib.MIN(df.low, timeperiod=10)
+        df['HIGH_10'] = talib.MAX(df.high, timeperiod=10)
+        df['LOW_50'] = talib.MIN(df.low, timeperiod=50)
+        df['VOLUME_SMA_20'] = talib.SMA(df.volume, timeperiod=20)
+        df.ta.adx(length=20, scalar=1, append=True)
+        df.ta.aroon(length=20, scalar=1, talib=False, append=True)
+        df.ta.stc(tclength=10, ma1=df['EMA_10'], ma2=df['EMA_20'], fast=10, slow=20, append=True)
+        df.ta.natr(length=20, scalar=1, talib=False, append=True)
+        df.ta.rsi(length=20, scalar=1, talib=False, append=True)
+        df.ta.cci(length=20, scalar=1, append=True)
         df['CCI_20_0.015'] = df['CCI_20_0.015'] / 100
         df[['STC_10_10_20_0.5', 'STCstoch_10_10_20_0.5']] = df[['STC_10_10_20_0.5', 'STCstoch_10_10_20_0.5']] / 100
         df['EMA_ratio'] = df['EMA_10'] / df['EMA_20']
-        df['DC_ratio'] = df['DCL_10_10'] / df['DCL_50_50']
+        df['LOW_ratio'] = df['LOW_10'] / df['LOW_50']
         df['above_MA'] = (df['close'] > df['SMA_50']).astype(int)
+        
+        df['trends'] = self._create_trend(df)
+        df = self._breakout_entry(df)
+        df.ta.tsignals(df['trends'], asbool=asbool, append=True)
         df.dropna(inplace=True)
         
         if return_all:
