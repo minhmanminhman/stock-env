@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from typing import Tuple
 from gym import spaces
-
+from gym import register
 from .base_env import BaseVietnamStockEnv
 from .base_env import Position
 from ..data_loader import BaseDataLoader
@@ -43,14 +43,14 @@ class RandomStockEnv(BaseVietnamStockEnv):
     
     @property
     def nav(self):
-        return self.position.quantity * self.close
+        return self.position.quantity * self.close_price
 
     @property
-    def open(self):
+    def open_price(self):
         return self.data_loader.current_ohlcv.open.item()
     
     @property
-    def close(self):
+    def close_price(self):
         return self.data_loader.current_ohlcv.close.item()
 
     def reset(self) -> Tuple[np.ndarray, float, bool, dict]:
@@ -105,11 +105,11 @@ class RandomStockEnv(BaseVietnamStockEnv):
         """
         _delta_shares = delta_shares
         if _delta_shares >= 0: # long or hold
-            _buy_value = self.open * delta_shares + self._total_cost(delta_shares)
+            _buy_value = self.open_price * delta_shares + self._total_cost(delta_shares)
             
             while _buy_value > self.cash:
                 delta_shares = (int(delta_shares / self.lot_size) - 1) * self.lot_size
-                _buy_value = self.open * delta_shares + self._total_cost(delta_shares)
+                _buy_value = self.open_price * delta_shares + self._total_cost(delta_shares)
                 
         else: # short
             short_quantity = min(self.position.on_hand, abs(_delta_shares))
@@ -123,10 +123,10 @@ class RandomStockEnv(BaseVietnamStockEnv):
     
     def _total_cost(self, delta_shares: int) -> float:
         if delta_shares >= 0:
-            cost = delta_shares * self.open * self.fee
+            cost = delta_shares * self.open_price * self.fee
         else:
             # selling stock has PIT fee = 0.1%
-            cost = abs(delta_shares) * self.open * (self.fee + 0.001)
+            cost = abs(delta_shares) * self.open_price * (self.fee + 0.001)
         return cost
     
     def _decode_action(self, action: float) -> int:
@@ -134,14 +134,14 @@ class RandomStockEnv(BaseVietnamStockEnv):
         diff_value = self.cash - target_cash
         # diff_value > 0 -> buy shares
         # diff_value < 0 -> sell shares
-        diff_shares = int((diff_value / self.open) / self.lot_size) * self.lot_size
+        diff_shares = int((diff_value / self.open_price) / self.lot_size) * self.lot_size
         return diff_shares
     
     def _calculate_reward(self, *args, **kwargs) -> float:
         eps = 1e-8
         cum_return = (self.portfolio_value + eps) / (self.init_cash + eps)
         # compare with holding
-        cum_return_from_holding = self.close / self.start_close_price
+        cum_return_from_holding = self.close_price / self.start_close_price
         diff = cum_return - cum_return_from_holding
         
         # method 1
@@ -168,7 +168,7 @@ class RandomStockEnv(BaseVietnamStockEnv):
 
     def _update_portfolio(self, delta_shares: int) -> float:
         # buy/sell at open price
-        self.cash -= (delta_shares * self.open + self._total_cost(delta_shares))
+        self.cash -= (delta_shares * self.open_price + self._total_cost(delta_shares))
         assert self.cash >= 0
         
     def _is_done(self):
@@ -186,3 +186,25 @@ class RandomStockEnv(BaseVietnamStockEnv):
         """
         low, high = 0, 1
         return low + (0.5 * (scaled_action + 1.0) * (high - low))
+    
+def create_finservice_env(file):
+    def make_env():
+        from ..data_loader import RandomStockLoader
+        from ..wrappers import StackObs
+        import pathlib
+        path = pathlib.Path(__file__).parent.parent.joinpath('datasets').resolve()
+        data_loader = RandomStockLoader.load(f"{path}/{file}")
+        env = RandomStockEnv(data_loader)
+        env = StackObs(env, n_steps=5)
+        return env
+    return make_env
+
+register(
+    id=f"FinService-v0",
+    entry_point=create_finservice_env('finservice_data_loader'),
+)
+
+register(
+    id=f"RandomVN30-v0",
+    entry_point=create_finservice_env('30stocks'),
+)
