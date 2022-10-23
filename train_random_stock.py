@@ -1,12 +1,10 @@
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.noise import NormalActionNoise
 from torch.nn import Tanh
 from stock_env.envs import *
-from stock_env.feature import feature_extractor
 from stock_env.feature.feature_extractor import *
-from stock_env.wrappers import StackObs
 from stock_env.envs import RandomStockEnv
-from stock_env.data_loader import RandomStockLoader
 
 def name_generate(env, algo, feature_extractor, ticker, suffix=None):
     env_name = env.__class__.__name__
@@ -20,49 +18,59 @@ def name_generate(env, algo, feature_extractor, ticker, suffix=None):
     return name
 
 if __name__ == '__main__':
-    path = "../stock_datasets/"
-    tickers = "SSI VND HCM MBS VCI".split()
-    suffix = "finservice"
-    n_steps = 5
+    # path = "../stock_datasets/"
+    # tickers = "SSI VND HCM MBS VCI".split()
+    # n_steps = 5
+    suffix = "sp500"
     feature_extractor = TrendFeatures
     
-    data_loader = RandomStockLoader(
-        tickers = tickers,
-        data_folder_path = "../stock_datasets/",
-        feature_extractor = TrendFeatures
-    )
+    env = gym.make('SP500-v0')
 
-    env = RandomStockEnv(data_loader)
-    env = StackObs(env, 5)
-    
-    model = PPO(
+    # model = PPO(
+    #     'MlpPolicy',
+    #     env=env, 
+    #     learning_rate=4.6e-5,
+    #     ent_coef=2.45e-5,
+    #     n_steps=1024,
+    #     batch_size=64,
+    #     clip_range=0.1,
+    #     n_epochs=10,
+    #     gamma=0.95,
+    #     max_grad_norm=0.3,
+    #     vf_coef=0.615,
+    #     tensorboard_log='log',
+    #     verbose=1,
+    #     policy_kwargs=dict(
+    #         activation_fn=Tanh,
+    #         net_arch=[dict(pi=[64, 64], vf=[64, 64])],
+    #     )
+    # )
+    model = SAC(
         'MlpPolicy',
-        env="FinService-v0", 
-        learning_rate=4.6e-5,
-        ent_coef=2.45e-5,
-        n_steps=1024,
-        batch_size=64,
-        clip_range=0.1,
-        n_epochs=10,
-        gamma=0.95,
-        max_grad_norm=0.3,
-        vf_coef=0.615,
+        env=env,
+        learning_rate=0.0009324565055470252,
+        gamma=0.98,
+        buffer_size=1000000,
+        batch_size=1024,
+        train_freq=(16, "step"),
+        gradient_steps=16,
+        learning_starts=50000,
+        action_noise=NormalActionNoise(0, 1),
+        tau=0.2,
+        use_sde=True,
         tensorboard_log='log',
-        verbose=0,
-        policy_kwargs=dict(
-            activation_fn=Tanh,
-            net_arch=[dict(pi=[64, 64], vf=[64, 64])],
-        )
+        policy_kwargs=dict(log_std_init=-2.4865866564874546, net_arch=[64, 64]),
+        verbose=1,
     )
     print(model.policy)
     
-    name = name_generate(env, model, feature_extractor, tickers, suffix)
+    name = name_generate(env, model, feature_extractor=feature_extractor, ticker=None, suffix=suffix)
     try:
         model.learn(
             total_timesteps=100000,
-            eval_env=None,
+            eval_env=env,
             eval_freq=0,
-            n_eval_episodes=0,
+            n_eval_episodes=10,
         )
     except KeyboardInterrupt:
         # this allows to save the model when interrupting training

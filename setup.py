@@ -8,7 +8,9 @@ REQUIRED_PACKAGES = [
     'stable-baselines3[extra]',
     'mt4_hst',
     'pandas-ta==0.3.14b0',
-    'finplot==1.8.2',
+    'TA-Lib',
+    'yfinance',
+    # 'finplot==1.8.2',
 ]
 
 PACKAGE_NAME = 'stock_env'

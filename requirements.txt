@@ -2,8 +2,10 @@ empyrical
 pyfolio
 stable-baselines3[extra]
 mt4_hst
+pandas
 pandas_ta
-finplot
+yfinance
+# finplot
 kaleido
 vectorbt
 ipykernel

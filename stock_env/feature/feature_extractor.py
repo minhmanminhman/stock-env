@@ -100,6 +100,8 @@ class TrendFeatures(BaseFeaturesExtractor):
     def preprocess(self, df, asbool=False, return_all=False):
         check_col(df, self.required_cols)
         df.sort_values('time', inplace=True)
+        df = df.reset_index(drop=True)
+        
         df.ta.sma(length=50, append=True)
         df.ta.ema(length=10, append=True)
         df.ta.ema(length=20, append=True)

@@ -6,6 +6,7 @@ from gym import register
 from .base_env import BaseVietnamStockEnv
 from .base_env import Position
 from ..data_loader import BaseDataLoader
+from empyrical import max_drawdown
 
 class RandomStockEnv(BaseVietnamStockEnv):
 
@@ -143,6 +144,9 @@ class RandomStockEnv(BaseVietnamStockEnv):
         # compare with holding
         cum_return_from_holding = self.close_price / self.start_close_price
         diff = cum_return - cum_return_from_holding
+        returns = pd.Series(self.history['portfolio_value'][-50:]).pct_change()
+        max_dd = np.abs(max_drawdown(returns))
+        max_dd = max_dd if not np.isnan(max_dd) else 0.
         
         # method 1
         # reward = diff / self.n_steps
@@ -156,12 +160,13 @@ class RandomStockEnv(BaseVietnamStockEnv):
             reward = 0
         else:
             reward = -2
-        return reward
+        output = reward - (max_dd / self.n_steps)
+        return output
     
     def get_history(self):
         history_df = pd.DataFrame(self.history)
         history_df['ticker'] = self.data_loader.ticker
-        history_df = history_df.astype({'time':'datetime64[ns]'})
+        # history_df = history_df.astype({'time':'datetime64[ns]'})
         data = self.data_loader.ohlcv.merge(history_df, how='inner', on='time')
         data = data.join(self.data_loader.features)
         return data
@@ -186,25 +191,3 @@ class RandomStockEnv(BaseVietnamStockEnv):
         """
         low, high = 0, 1
         return low + (0.5 * (scaled_action + 1.0) * (high - low))
-    
-def create_finservice_env(file):
-    def make_env():
-        from ..data_loader import RandomStockLoader
-        from ..wrappers import StackObs
-        import pathlib
-        path = pathlib.Path(__file__).parent.parent.joinpath('datasets').resolve()
-        data_loader = RandomStockLoader.load(f"{path}/{file}")
-        env = RandomStockEnv(data_loader)
-        env = StackObs(env, n_steps=5)
-        return env
-    return make_env
-
-register(
-    id=f"FinService-v0",
-    entry_point=create_finservice_env('finservice_data_loader'),
-)
-
-register(
-    id=f"RandomVN30-v0",
-    entry_point=create_finservice_env('30stocks'),
-)

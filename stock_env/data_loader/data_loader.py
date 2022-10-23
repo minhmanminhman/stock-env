@@ -1,10 +1,12 @@
 import pandas as pd
+import pandas_ta as ta
 import mt4_hst
 import numpy as np
-
+import yfinance
 from .base import BaseDataLoader
 from ..feature import BaseFeaturesExtractor
 from ..utils import check_col
+from tqdm import tqdm
 
 class RandomStockLoader(BaseDataLoader):
     
@@ -23,6 +25,10 @@ class RandomStockLoader(BaseDataLoader):
         self.feature_extractor = feature_extractor()
         df = self._load_data()
         self.stack_features, self.stack_ohlcv = self._preprocess(df)
+        
+        # available tickers, ticker may be not available
+        self.tickers = list(self.stack_ohlcv.index.get_level_values(0).unique())
+        
         # episode
         self._start_tick = None
         self._end_tick = None
@@ -44,7 +50,8 @@ class RandomStockLoader(BaseDataLoader):
         grouped_ohlcv = df.groupby('ticker')
         stack_features = grouped_ohlcv.apply(lambda x: self.feature_extractor.preprocess(x))
         
-        stack_ohlcv = df.set_index(keys=['ticker', df.index])
+        # stack_ohlcv = df.set_index(keys=['ticker', df.index])
+        stack_ohlcv = grouped_ohlcv.apply(lambda x: x.reset_index(drop=True))
         stack_ohlcv, _ = stack_ohlcv.align(stack_features, join='inner', axis=0)
         return stack_features, stack_ohlcv
     
@@ -102,3 +109,47 @@ class RandomStockLoader(BaseDataLoader):
             raise ValueError("training mode is expected to be boolean")
         self.train_mode = mode
         return self
+    
+class USStockLoader(RandomStockLoader):
+    
+    def __init__(
+        self, 
+        tickers: list,
+        feature_extractor: BaseFeaturesExtractor,
+        max_episode_steps: int = 250,
+        data_period: str = '1y'
+    ):
+        self.tickers = tickers
+        self.max_episode_steps = max_episode_steps
+        self.train_mode = True
+        self.data_period = data_period
+        
+        self.feature_extractor = feature_extractor()
+        df = self._load_data()
+        self.stack_features, self.stack_ohlcv = self._preprocess(df)
+        # available tickers, ticker may be not available
+        self.tickers = list(self.stack_ohlcv.index.get_level_values(0).unique())
+        # episode
+        self._start_tick = None
+        self._end_tick = None
+        self._end_episode_tick = None
+        self._current_tick = None
+    
+    def _load_data(self):
+        # prepare string of tickers
+        str_ticker = self.tickers[0]
+        for ticker in self.tickers[1:]:
+            str_ticker += f' {ticker}'
+        
+        # download data
+        data = yfinance.download(str_ticker, period=self.data_period)
+        
+        # format for BaseFeaturesExtractor.preprocess api
+        data = data.stack()
+        data.rename_axis(index={'Date': 'time', None: 'ticker'}, inplace=True)
+        data = data.reset_index()
+        data.columns = data.columns.str.lower()
+        data = data[['time', 'open', 'high', 'low', 'adj close', 'volume', 'ticker']]
+        data.rename(columns={'adj close': 'close'}, inplace=True)
+        data = data.sort_values(by='time')
+        return data
