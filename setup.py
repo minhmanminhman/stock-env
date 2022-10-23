@@ -1,14 +1,14 @@
 import setuptools
 REQUIRED_PACKAGES = [
-    'numpy==1.23.3',
-    'pandas==1.4.4',
-    'scipy==1.9.1',
+    'numpy==1.21.6',
+    'pandas==1.3.5',
+    # 'scipy==1.9.1',
     'empyrical',
     'pyfolio',
     'stable-baselines3[extra]',
     'mt4_hst',
     'pandas-ta==0.3.14b0',
-    'TA-Lib',
+    # 'TA-Lib',
     'yfinance',
     # 'finplot==1.8.2',
 ]
