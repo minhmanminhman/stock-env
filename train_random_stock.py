@@ -21,10 +21,12 @@ if __name__ == '__main__':
     # path = "../stock_datasets/"
     # tickers = "SSI VND HCM MBS VCI".split()
     # n_steps = 5
-    suffix = "sp500"
+    # suffix = "sp500"
+    suffix = "maml"
     feature_extractor = TrendFeatures
     
     env = gym.make('SP500-v0')
+    eval_env = gym.make('FinService-v0')
 
     # model = PPO(
     #     'MlpPolicy',
@@ -45,6 +47,10 @@ if __name__ == '__main__':
     #         net_arch=[dict(pi=[64, 64], vf=[64, 64])],
     #     )
     # )
+    # setup noise
+    
+    n_actions = env.action_space.shape[0]
+    action_noise = NormalActionNoise(mean=np.zeros(n_actions),sigma=1 * np.ones(n_actions))
     model = SAC(
         'MlpPolicy',
         env=env,
@@ -55,7 +61,7 @@ if __name__ == '__main__':
         train_freq=(16, "step"),
         gradient_steps=16,
         learning_starts=50000,
-        action_noise=NormalActionNoise(0, 1),
+        action_noise=action_noise,
         tau=0.2,
         use_sde=True,
         tensorboard_log='log',
@@ -68,8 +74,8 @@ if __name__ == '__main__':
     try:
         model.learn(
             total_timesteps=100000,
-            eval_env=env,
-            eval_freq=0,
+            eval_env=eval_env,
+            eval_freq=50000,
             n_eval_episodes=10,
         )
     except KeyboardInterrupt:
@@ -78,5 +84,5 @@ if __name__ == '__main__':
 
     model.save(f'log/{name}')
 
-    mean, std = evaluate_policy(model, env, n_eval_episodes=10)
+    mean, std = evaluate_policy(model, eval_env, n_eval_episodes=20)
     print(f"Mean reward: {mean:.2f} +/- {std: .2f}")

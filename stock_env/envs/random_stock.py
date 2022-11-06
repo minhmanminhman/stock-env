@@ -140,9 +140,9 @@ class RandomStockEnv(BaseVietnamStockEnv):
     
     def _calculate_reward(self, *args, **kwargs) -> float:
         eps = 1e-8
-        cum_return = (self.portfolio_value + eps) / (self.init_cash + eps)
+        cum_return = ((self.portfolio_value + eps) / (self.init_cash + eps)) - 1
         # compare with holding
-        cum_return_from_holding = self.close_price / self.start_close_price
+        cum_return_from_holding = (self.close_price / self.start_close_price) - 1
         diff = cum_return - cum_return_from_holding
         returns = pd.Series(self.history['portfolio_value'][-50:]).pct_change()
         max_dd = np.abs(max_drawdown(returns))
@@ -152,16 +152,22 @@ class RandomStockEnv(BaseVietnamStockEnv):
         # reward = diff / self.n_steps
         
         # method 2
-        if (diff > 0) and (cum_return > 0):
-            reward = 2
-        elif (diff > 0) and (cum_return < 0):
-            reward = 1
-        elif (diff > 0) and (cum_return == 0):
-            reward = 0
-        else:
-            reward = -2
-        output = reward - (max_dd / self.n_steps)
-        return output
+        if cum_return > 0.0: # make profit
+            if diff > 0.0: # win buy-and-hold
+                reward = 2
+            else:
+                reward = 1
+        else: # loss
+            if diff > 0.0: # loss less than buy-and-hold
+                reward = -1
+            else:
+                reward = -2
+
+        if max_dd >= 0.2:
+            reward -= 0.2
+        elif max_dd >= 0.1:
+            reward -= 0.1
+        return reward
     
     def get_history(self):
         history_df = pd.DataFrame(self.history)
