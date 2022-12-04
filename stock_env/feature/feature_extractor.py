@@ -2,9 +2,9 @@ from abc import abstractmethod
 import pandas as pd
 import pandas_ta as ta
 import talib
-from ..utils import check_col
+from stock_env.common.common_utils import check_col
 import numpy as np
-from ..strategy import *
+from stock_env.strategy import *
 
 class BaseFeaturesExtractor:
 
@@ -130,3 +130,26 @@ class TrendFeatures(BaseFeaturesExtractor):
             return df
         else:
             return df[self.feature_cols]
+
+class SimpleFeatures(BaseFeaturesExtractor):
+    """
+    Indicators in paper: 
+    Deep Reinforcement Learning approach using customized technical indicators 
+    for a pre-emerging market: A case study of Vietnamese stock market
+    """
+    
+    def __init__(self):
+        self.strategy = SimpleStrategy
+        self.required_cols = set('time open high low close volume'.split())
+        self.feature_cols = "close SMA_10 RSI_14".split()
+        self.feature_dim = len(self.feature_cols)
+    
+    def preprocess(self, df):
+        check_col(df, self.required_cols)
+        df.sort_values(by='time', inplace=True)
+        df = df.reset_index(drop=True)
+        # create indicators
+        df.ta.strategy(self.strategy)
+        
+        df.dropna(inplace=True)
+        return df[self.feature_cols]

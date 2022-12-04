@@ -32,3 +32,12 @@ CommonStrategy = ta.Strategy(
         {"kind": "macd"},
     ]
 )
+
+SimpleStrategy = ta.Strategy(
+    name="Simple Strategy for testing",
+    description="SMA RSI",
+    ta=[
+        {"kind": "sma", "length": 10},
+        {"kind": "rsi", "length": 14},
+    ]
+)
