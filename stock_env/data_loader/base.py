@@ -17,3 +17,14 @@ class BaseDataLoader:
     @abstractmethod
     def step(self, *args, **kwargs):
         raise NotImplementedError
+
+
+class BaseTaskLoader:
+    
+    @abstractmethod
+    def reset_task(self, *args, **kwargs):
+        raise NotImplementedError
+    
+    @abstractmethod
+    def sample_task(self, *args, **kwargs):
+        raise NotImplementedError
