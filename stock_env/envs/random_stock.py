@@ -1,14 +1,15 @@
 import numpy as np
 import pandas as pd
 from typing import Tuple
-from gym import spaces
-from gym import register
+from gymnasium import spaces
 from .base_env import BaseVietnamStockEnv
 from .base_env import Position
 from ..data_loader import BaseDataLoader
 from empyrical import max_drawdown
 
 class RandomStockEnv(BaseVietnamStockEnv):
+    
+    metadata = {"render_modes": ["human", "rgb_array"]}
 
     def __init__(
         self,
@@ -69,9 +70,9 @@ class RandomStockEnv(BaseVietnamStockEnv):
             'time': [],
             'step_reward': [],
         }
-        features = self.data_loader.reset()
+        features, info = self.data_loader.reset()
         self.start_close_price = self.data_loader.current_ohlcv.close.item()
-        return self._get_observation(features)
+        return self._get_observation(features), info
 
     def step(self, action: float) -> Tuple[np.ndarray, float, bool, dict]:
         self.n_steps += 1
@@ -98,7 +99,14 @@ class RandomStockEnv(BaseVietnamStockEnv):
             step_reward = step_reward,
         )
         self._update_history(info)
-        return self._get_observation(features), step_reward, self._is_done(), info
+        
+        # get final history
+        terminated, truncated = self._is_done()
+        done = terminated or truncated
+        if done:
+            info['final_history'] = self.get_history()
+            
+        return self._get_observation(features), step_reward, terminated, truncated, info
 
     def _modify_quantity(self, delta_shares: int) -> int:
         """
@@ -172,7 +180,6 @@ class RandomStockEnv(BaseVietnamStockEnv):
     def get_history(self):
         history_df = pd.DataFrame(self.history)
         history_df['ticker'] = self.data_loader.ticker
-        # history_df = history_df.astype({'time':'datetime64[ns]'})
         data = self.data_loader.ohlcv.merge(history_df, how='inner', on='time')
         data = data.join(self.data_loader.features)
         return data
@@ -183,10 +190,11 @@ class RandomStockEnv(BaseVietnamStockEnv):
         assert self.cash >= 0
         
     def _is_done(self):
-        if self.data_loader.is_done \
-            or (self.portfolio_value <= 0):
-            return True
-        return False
+        #TODO: add condition for terminated
+        terminated, truncated = False, False
+        if self.data_loader.is_done or (self.portfolio_value <= 0):
+            truncated = True
+        return terminated, truncated
     
     def unscale_action(self, scaled_action: np.ndarray) -> np.ndarray:
         """

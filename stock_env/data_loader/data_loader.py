@@ -1,12 +1,10 @@
 import pandas as pd
-import pandas_ta as ta
 import mt4_hst
 import numpy as np
 import yfinance
 from .base import BaseDataLoader
 from ..feature import BaseFeaturesExtractor
-from ..utils import check_col
-from tqdm import tqdm
+from stock_env.common.common_utils import check_col
 
 class RandomStockLoader(BaseDataLoader):
     
@@ -94,8 +92,7 @@ class RandomStockLoader(BaseDataLoader):
         
         self._current_tick = self._start_tick = start_tick
         self._end_episode_tick = end_tick
-        
-        return self._step()
+        return self._step(), self._reset_info()
     
     def step(self):
         self._current_tick += 1
@@ -103,6 +100,14 @@ class RandomStockLoader(BaseDataLoader):
     
     def _step(self):
         return self.features.iloc[self._current_tick].values
+    
+    def _reset_info(self):
+        """Call in reset() method"""
+        return {
+            'episode_ticker': self.episode_ticker,
+            'from_time': self.ohlcv.iloc[self._start_tick].time.strftime("%Y-%m-%d %H:%M:%S"),
+            'to_time': self.ohlcv.iloc[self._end_episode_tick].time.strftime("%Y-%m-%d %H:%M:%S"),
+        }
     
     def train(self, mode: bool = True):
         if not isinstance(mode, bool):

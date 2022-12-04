@@ -1,13 +1,10 @@
 from abc import abstractmethod
 import numpy as np
-import gym
-from gym import spaces
-from gym.utils import seeding
-import pandas as pd
+import gymnasium as gym
+from gymnasium.utils import seeding
 from typing import Tuple
 from dataclasses import dataclass
 
-from ..utils import check_col
 from ..data_loader import BaseDataLoader
 
 @dataclass
