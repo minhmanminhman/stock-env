@@ -6,6 +6,7 @@ from torch.utils.tensorboard import SummaryWriter
 import torch.optim as optim
 import datetime as dt
 
+from stock_env.envs import *
 from stock_env.algos.agent import Agent
 from stock_env.algos.buffer import RolloutBuffer
 
@@ -25,10 +26,10 @@ def make_env(env_id, seed, gamma):
     return thunk
 
 if __name__ == '__main__':
-    env_id = 'MountainCarContinuous-v0'
+    env_id = 'SP500-v0'
     num_envs = 8
     num_steps = 8
-    total_timesteps = 150_000
+    total_timesteps = 150
     epoches = total_timesteps // num_steps // num_envs
     gamma = 0.9999
     gae_lambda = 0.9
@@ -47,7 +48,8 @@ if __name__ == '__main__':
     run_name = f'ppo_{dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
 
-    envs = SyncVectorEnv([make_env(env_id, seed, gamma) for _ in range(num_envs)])
+    # envs = SyncVectorEnv([make_env(env_id, seed, gamma) for _ in range(num_envs)])
+    envs = gym.vector.make(env_id, num_envs=num_envs, asynchronous=False)
     writer = SummaryWriter(f"log/{run_name}")
     buffer = RolloutBuffer(num_steps, envs, device=device, gamma=gamma, gae_lambda=gae_lambda)
 
@@ -249,6 +251,6 @@ if __name__ == '__main__':
     std_length = np.std(episode_lengths)
     print(f"Mean lengths: {mean_length:.2f} +/- {std_length: .2f}")
     
-    th.save(agent.state_dict(), "model/mountain_car_agent.pth")
+    th.save(agent.state_dict(), f"model/{env_id}_{run_name}.pth")
     
     envs.close()

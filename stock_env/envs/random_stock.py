@@ -179,9 +179,8 @@ class RandomStockEnv(BaseVietnamStockEnv):
     
     def get_history(self):
         history_df = pd.DataFrame(self.history)
-        history_df['ticker'] = self.data_loader.ticker
+        history_df['ticker'] = self.data_loader.episode_ticker
         data = self.data_loader.ohlcv.merge(history_df, how='inner', on='time')
-        data = data.join(self.data_loader.features)
         return data
 
     def _update_portfolio(self, delta_shares: int) -> float:

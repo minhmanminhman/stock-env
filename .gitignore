@@ -109,6 +109,7 @@ env/
 venv/
 ENV/
 temp/
+model/
 env.bak/
 venv.bak/
 

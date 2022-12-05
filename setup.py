@@ -1,6 +1,6 @@
 import setuptools
 REQUIRED_PACKAGES = [
-    'numpy==1.21.6',
+    'numpy==1.23.5',
     'pandas==1.3.5',
     # 'scipy==1.9.1',
     'empyrical',
