@@ -17,14 +17,14 @@ def create_env(name):
         return env
     return make_env
 
-def make_task_env(name, seed=None, gamma=0.99):
+def make_task_env(name, seed=None, gamma=0.99, env_kwargs={}):
     def _thunk():
         from stock_env.data_loader import USTaskLoader
         import pathlib
         path = pathlib.Path(__file__).parent.parent.joinpath('datasets').resolve()
         
         task_loader = USTaskLoader.load(f"{path}/{name}")
-        env = TaskStockEnv(task_loader)
+        env = TaskStockEnv(task_loader, **env_kwargs)
         
         _task = env.sample_task()
         env.reset_task(_task)
@@ -81,4 +81,20 @@ register(
 register(
     id=f"FAANGTask-v0",
     entry_point=make_task_env('faang_task_loader'),
+)
+
+register(
+    id=f"MiniFAANG-v0",
+    entry_point=make_task_env(
+        name='mini_faang', 
+        env_kwargs={'lot_size': 1}
+    ),
+)
+
+register(
+    id=f"MiniVNStock-v0",
+    entry_point=make_task_env(
+        name='mini_vnstock', 
+        env_kwargs={'lot_size': 100, 'init_cash': 500000}
+    ),
 )

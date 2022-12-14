@@ -5,6 +5,8 @@ import yfinance
 from .base import BaseDataLoader
 from ..feature import BaseFeaturesExtractor
 from stock_env.common.common_utils import check_col
+import vnquant.data as vqdt
+
 
 class RandomStockLoader(BaseDataLoader):
     
@@ -156,5 +158,52 @@ class USStockLoader(RandomStockLoader):
         data.columns = data.columns.str.lower()
         data = data[['time', 'open', 'high', 'low', 'adj close', 'volume', 'ticker']]
         data.rename(columns={'adj close': 'close'}, inplace=True)
+        data = data.sort_values(by='time')
+        return data
+    
+class VNStockLoader(RandomStockLoader):
+    
+    def __init__(
+        self, 
+        tickers: list,
+        feature_extractor: BaseFeaturesExtractor,
+        max_episode_steps: int = 250,
+        start_date: str = '2016-01-01',
+        end_date: str = '2022-12-31'
+    ):
+        self.tickers = tickers
+        self.max_episode_steps = max_episode_steps
+        self.train_mode = True
+        self.start_date = start_date
+        self.end_date = end_date
+        
+        self.feature_extractor = feature_extractor()
+        df = self._load_data()
+        self.stack_features, self.stack_ohlcv = self._preprocess(df)
+        # available tickers, ticker may be not available
+        self.tickers = list(self.stack_ohlcv.index.get_level_values(0).unique())
+        # episode
+        self._start_tick = None
+        self._end_tick = None
+        self._end_episode_tick = None
+        self._current_tick = None
+    
+    def _load_data(self):
+        # download data
+        data_loader = vqdt.DataLoader(
+            symbols=self.tickers,
+            start=self.start_date,
+            end=self.end_date,
+            minimal=True,
+            data_source="vnd"
+        )
+        data = data_loader.download()
+        data = data.stack().reset_index().rename(
+            columns={
+                'Symbols': 'ticker',
+                'date': 'time',
+            }
+        )
+        data = data[['time', 'open', 'high', 'low', 'close', 'volume', 'ticker']]
         data = data.sort_values(by='time')
         return data
