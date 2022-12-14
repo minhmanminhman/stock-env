@@ -9,7 +9,7 @@ class MetaVectorEnv(SyncVectorEnv):
     def __init__(self, env_fns, **kwargs):
         super().__init__(env_fns, **kwargs)
     
-    def reset_task(self, task):
+    def reset_task(self, task: str):
         for env in self.envs:
             env.reset_task(task)
     
