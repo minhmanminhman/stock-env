@@ -1,6 +1,7 @@
 import warnings
 warnings.filterwarnings('ignore')
-
+import yaml
+from types import SimpleNamespace
 import pandas as pd
 import matplotlib.pyplot as plt
 from pyfolio.plotting import (
@@ -186,3 +187,16 @@ def plot_quantity(df, ax):
     
     # plot quantity
     df['quantity'].plot(ax=ax, legend='Quantity')
+    
+def open_config(path, env_id) -> SimpleNamespace:
+    
+    with open('../configs/maml.yaml') as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+    try:
+        args = config[env_id]
+        args = SimpleNamespace(**args)
+    except KeyError:        
+        raise KeyError(f"Environment {env_id} not found in config file")
+    
+    return args
+    
