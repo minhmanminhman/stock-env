@@ -1,7 +1,8 @@
 import numpy as np
 import datetime as dt
 import gymnasium as gym
-
+import yaml
+from types import SimpleNamespace
 import torch as th
 from torch.utils.tensorboard import SummaryWriter
 from torchmeta.utils.gradient_based import gradient_update_parameters
@@ -10,22 +11,19 @@ from stock_env.envs import *
 from stock_env.algos.buffer import RolloutBuffer
 from stock_env.algos.agent import MetaAgent
 from stock_env.envs import MetaVectorEnv
-from stock_env.algos.buffer import RolloutBuffer
 from stock_env.common.evaluation import evaluate_agent
 
 @th.no_grad()
-def meta_collect_rollout(
+def _meta_collect_rollout(
     agent, 
     buffer, 
     envs, 
     gamma, 
-    device='cpu',
     is_timeout=True,
     params=None,
     writer=None,
-):
-    epoch = globals()['epoch']
-    
+):  
+    device = buffer.device
     obs, _ = envs.reset()
     dones = th.zeros((envs.num_envs,))
     obs = th.Tensor(obs).to(device).to(th.float32)
@@ -58,6 +56,12 @@ def meta_collect_rollout(
                 final_infos = next_infos["final_info"][idx]
                 for info in final_infos:
                     if "episode" in info.keys():
+                        
+                        epoch = globals()['epoch']
+                        global_step = globals()['global_step']
+                        
+                        if global_step % 10 == 0:
+                            print(f"global_step={global_step}, episodic_return={info['episode']['r'].item() :.2f}, epoch={epoch}")
                         writer.add_scalar("episode/return", info["episode"]["r"], epoch)
                         writer.add_scalar("episode/length", info["episode"]["l"], epoch)
                         break
@@ -80,7 +84,7 @@ def meta_collect_rollout(
     buffer.compute_returns(next_value, next_dones)
     return buffer
 
-def ppo_loss(
+def _compute_ppo_loss(
     agent, 
     buffer, 
     normalize_advantage=True, 
@@ -88,10 +92,11 @@ def ppo_loss(
     clip_range_vf=None,
     ent_coef=0.01,
     vf_coef=0.5,
+    params=None,
 ):
     
     for rollout_data in buffer.get():
-        _, values, log_prob, entropy = agent.get_action_and_value(rollout_data.obs, rollout_data.actions)
+        _, values, log_prob, entropy = agent.get_action_and_value(rollout_data.obs, rollout_data.actions, params=params)
         values = values.flatten()
         
         advantages = rollout_data.advantages
@@ -127,120 +132,141 @@ def ppo_loss(
 
         loss = policy_loss + ent_coef * entropy_loss + vf_coef * value_loss
     return loss
+
+def get_inner_loss(
+    args,
+    meta_agent, 
+    meta_env, 
+    buffer, 
+    params=None, 
+    writer=None
+):
+    filled_buffer = _meta_collect_rollout(
+        agent=meta_agent, 
+        buffer=buffer, 
+        envs=meta_env, 
+        gamma=args.gamma,
+        params=params,
+        writer=writer,)
     
+    loss = _compute_ppo_loss(
+        agent=meta_agent,
+        buffer=filled_buffer,
+        params=params,
+        normalize_advantage=args.normalize_advantage,
+        clip_coef=args.clip_coef,
+        clip_range_vf=args.clip_range_vf,
+        ent_coef=args.ent_coef,
+        vf_coef=args.vf_coef,)
+    return loss
+
+def adapt(args, meta_agent, meta_env, buffer):
+    
+    params = None
+    l_loss = []
+    for _ in range(args.n_adapt_steps):
+        inner_loss = get_inner_loss(
+            args=args,
+            meta_agent=meta_agent,
+            meta_env=meta_env,
+            buffer=buffer,
+            params=params,
+        )
+        l_loss.append(inner_loss.item()) # logging
+        
+        meta_agent.zero_grad()
+        params = gradient_update_parameters(
+            model=meta_agent, 
+            loss=inner_loss, 
+            step_size=args.inner_lr,
+            params=params,
+            first_order=(not meta_agent.training)
+        )
+    return params, np.mean(l_loss)
+
 if __name__ == '__main__':
-    env_id = 'FAANGTask-v0'
-    num_envs = 5
-    num_tasks = 5
-    num_steps = 25
-    epochs = 100
-    gamma = 0.99
-    seed = 0
-    gae_lambda = 0.9
-    learning_rate = 1e-3
-    inner_lr = 0.4
-    is_timeout = True
-    n_eval_episodes = 5
-    clip_coef = 0.2
-    clip_range_vf = 0.2
-    vf_coef = 0.19
-    ent_coef = 0.02
-    max_grad_norm = 5
-    normalize_advantage = True
-    target_kl = None
-    run_name = f'maml_{dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}'
+    
+    env_id = 'MiniFAANG-v0'
+    
+    # read config from yaml
+    with open('configs/maml.yaml') as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+        args = config[env_id]
+        args = SimpleNamespace(**args)
+
+    if args.run_name is None:
+        run_name = f'maml_minifaang_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
+    else:
+        run_name = f'{args.run_name}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
+    
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
     
-    task_env = MetaVectorEnv([lambda: gym.make(env_id) for _ in range(num_envs)])
-    buffer = RolloutBuffer(num_steps, task_env, device=device, gamma=gamma, gae_lambda=gae_lambda)
-    agent = MetaAgent(task_env)
-    meta_optimizer = th.optim.Adam(agent.parameters(), lr=learning_rate)
+    meta_env = MetaVectorEnv([lambda: gym.make(env_id) for _ in range(args.num_envs)])
+    buffer = RolloutBuffer(args.num_steps, meta_env, device=device, gamma=args.gamma, gae_lambda=args.gae_lambda)
+    meta_agent = MetaAgent(meta_env).to(device)
+    meta_optimizer = th.optim.Adam(meta_agent.parameters(), lr=args.outer_lr)
 
     writer = SummaryWriter(f"log/{run_name}")
     try:
-        global_step = 0
-        inner_losses = []
-        for epoch in range(epochs):
+        global_step, best_value, save_model = 0, None, False
+        
+        for epoch in range(args.epochs):
             
-            agent.zero_grad()
-            tasks = task_env.sample_task(num_tasks)
+            tasks = meta_env.sample_task(args.num_tasks)
             outer_loss = th.tensor(0., device=device)
-            # INNER LOOP
+            task_inner_losses = []
             for task_idx, task in enumerate(tasks):
-                global_step += 1 * num_tasks
-                task_env.reset_task(task)
+                global_step += 1 * args.num_tasks
+                meta_env.reset_task(task)
                 
-                agent.train()
-                task_env.train()
-                buffer = buffer = meta_collect_rollout(
-                    agent=agent, 
-                    buffer=buffer, 
-                    envs=task_env, 
-                    gamma=gamma,
-                    device=device,
-                )
-                
-                # update agent
-                inner_loss = ppo_loss(
-                    agent=agent,
-                    buffer=buffer,
-                    normalize_advantage=normalize_advantage,
-                    clip_coef=clip_coef,
-                    clip_range_vf=clip_range_vf,
-                    ent_coef=ent_coef,
-                    vf_coef=vf_coef)
-                inner_losses.append(inner_loss.item()) # logging
-                
-                agent.zero_grad()
-                params = gradient_update_parameters(
-                    model=agent, 
-                    loss=inner_loss, 
-                    step_size=inner_lr,)
+                meta_agent.train()
+                meta_env.train()
+                # adapt
+                params, inner_loss = adapt(args, meta_agent, meta_env, buffer)
+                task_inner_losses.append(inner_loss.item()) # logging
                 
                 # validation
-                task_env.train(False)
-                buffer = meta_collect_rollout(
-                    agent=agent, 
-                    buffer=buffer, 
-                    envs=task_env, 
-                    gamma=gamma,
-                    device=device,
-                    params=params,
-                    writer=writer,
-                )
-                
-                valid_loss = ppo_loss(
-                    agent=agent,
-                    buffer=buffer,
-                    normalize_advantage=normalize_advantage,
-                    clip_coef=clip_coef,
-                    clip_range_vf=clip_range_vf,
-                    ent_coef=ent_coef,
-                    vf_coef=vf_coef,)
+                meta_env.train(False)
+                valid_loss = get_inner_loss(args, meta_agent, meta_env, buffer, params)
                 
                 outer_loss += valid_loss
 
-            outer_loss.div_(num_tasks)
+            outer_loss.div_(args.num_tasks)
             
-            writer.add_scalar("train/outer_loss", outer_loss.item(), epoch)
-            writer.add_scalar("train/mean_inner_loss", np.mean(inner_losses), epoch)
+            meta_optimizer.zero_grad()
             outer_loss.backward()
             meta_optimizer.step()
+            
+            # MISC JOBS
+            # logging
+            writer.add_scalar("train/outer_loss", outer_loss.item(), epoch)
+            writer.add_scalar("train/mean_inner_loss_over_tasks", np.mean(task_inner_losses), epoch)
+            # Save best model
+            if (best_value is None) or (best_value > outer_loss.item()):
+                best_value = outer_loss.item()
+                save_model = True
+            else:
+                save_model = False
+
+            if save_model:
+                th.save(meta_agent.state_dict(), f"model/{run_name}.pth")
+    
     except KeyboardInterrupt:
         pass
+    
     finally:
-        eval_tasks = task_env.sample_task(task_env.num_envs)
-        for task, env in zip(eval_tasks, task_env.envs):
+        eval_tasks = meta_env.sample_task(meta_env.num_envs)
+        for task, env in zip(eval_tasks, meta_env.envs):
             env.reset_task(task)
             env.data_loader.train(False)
-
-        mean, std = evaluate_agent(agent, task_env, n_eval_episodes)
+        
+        meta_agent.load_state_dict(th.load(f"model/{run_name}.pth"))
+        meta_agent.eval()
+        mean, std = evaluate_agent(meta_agent, meta_env, args.n_eval_episodes)
         print(f"Mean reward: {mean:.2f} +/- {std: .2f}")
         
-        th.save(agent.state_dict(), f"model/{run_name}.pth")
-        
-        task_env.close()
+        meta_env.close()
         writer.close()
         
-        del agent
-        del task_env
+        del meta_agent
+        del meta_env
