@@ -9,7 +9,7 @@ class USTaskLoader(USStockLoader, BaseTaskLoader):
         tickers: list,
         feature_extractor: BaseFeaturesExtractor = TrendFeatures,
         max_episode_steps: int = 250,
-        n_test_period: int = 3,
+        test_pct: float = 0.2,
         data_period: str = '1y'
     ):
         super().__init__(
@@ -19,7 +19,7 @@ class USTaskLoader(USStockLoader, BaseTaskLoader):
             data_period=data_period
         )
         self.episode_ticker = None
-        self.n_test_period = n_test_period
+        self.test_pct = test_pct
     
     def reset_task(self, task: str) -> None:
         """Each task is a different ticker"""
@@ -38,14 +38,15 @@ class USTaskLoader(USStockLoader, BaseTaskLoader):
         self.features = self.stack_features.loc[self.episode_ticker]
         self._end_tick = self.ohlcv.shape[0] - 1
         start_idxes = np.arange(start=0, stop=self.ohlcv.shape[0], step=self.max_episode_steps)
-        self.train_idxes = start_idxes[:-self.n_test_period]
-        self.test_idxes = start_idxes[-self.n_test_period:]
+        test_mask = (start_idxes >= np.quantile(start_idxes, 1 - self.test_pct))
+        self.train_idxes = start_idxes[~test_mask]
+        self.test_idxes = start_idxes[test_mask]
         
         if self.train_mode:
             idxes = self.train_idxes
         else:
             idxes = self.test_idxes
-        
+        assert len(idxes) > 0
         start_tick = np.random.choice(idxes)
         end_tick = min(start_tick + self.max_episode_steps, self._end_tick)
         
@@ -63,7 +64,7 @@ class VNTaskLoader(VNStockLoader, BaseTaskLoader):
         max_episode_steps: int = 250,
         start_date: str = '2016-01-01',
         end_date: str = '2022-12-31',
-        n_test_period: int = 3,
+        test_pct: float = 0.2,
     ):
         super().__init__(
             tickers=tickers,
@@ -73,7 +74,7 @@ class VNTaskLoader(VNStockLoader, BaseTaskLoader):
             end_date=end_date
         )
         self.episode_ticker = None
-        self.n_test_period = n_test_period
+        self.test_pct = test_pct
     
     def reset_task(self, task: str) -> None:
         """Each task is a different ticker"""
@@ -92,14 +93,16 @@ class VNTaskLoader(VNStockLoader, BaseTaskLoader):
         self.features = self.stack_features.loc[self.episode_ticker]
         self._end_tick = self.ohlcv.shape[0] - 1
         start_idxes = np.arange(start=0, stop=self.ohlcv.shape[0], step=self.max_episode_steps)
-        self.train_idxes = start_idxes[:-self.n_test_period]
-        self.test_idxes = start_idxes[-self.n_test_period:]
+        test_mask = (start_idxes >= np.quantile(start_idxes, 1 - self.test_pct))
+        self.train_idxes = start_idxes[~test_mask]
+        self.test_idxes = start_idxes[test_mask]
         
         if self.train_mode:
             idxes = self.train_idxes
         else:
             idxes = self.test_idxes
         
+        assert len(idxes) > 0
         start_tick = np.random.choice(idxes)
         end_tick = min(start_tick + self.max_episode_steps, self._end_tick)
         
