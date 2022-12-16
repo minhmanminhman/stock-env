@@ -5,3 +5,7 @@ MiniFAANG-v0:
 MiniVNStock-v0:
   lot_size: 100
   init_cash: 500000
+
+SP500-v0:
+  lot_size: 1
+  init_cash: 100000

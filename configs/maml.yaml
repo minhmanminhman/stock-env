@@ -1,3 +1,24 @@
+SP500-v0:
+  num_envs: 5
+  num_tasks: 10
+  num_steps: 250
+  n_adapt_steps: 1
+  n_gradient_steps: 3
+  n_eval_episodes: 5
+  epochs: 5
+  gamma: 0.99
+  gae_lambda: 0.9
+  outer_lr: !!float 1e-3
+  inner_lr: 0.2
+  clip_coef: 0.1
+  clip_range_vf: 0.1
+  vf_coef: 0.1
+  ent_coef: 0.02
+  max_grad_norm: 10
+  normalize_advantage: True
+  target_kl: null
+  run_name: 'sp500'
+
 MiniFAANG-v0:
   num_envs: 5
   num_tasks: 5

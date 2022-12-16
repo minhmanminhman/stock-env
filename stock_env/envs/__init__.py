@@ -78,7 +78,10 @@ register(
 
 register(
     id=f"SP500-v0",
-    entry_point=create_env('sp500_data_loader'),
+    entry_point=make_task_env(
+        name='sp500',
+        env_kwargs=open_config(f'{config_path}/envs.yaml', env_id="SP500-v0", is_args=False)
+    ),
 )
 
 register(
