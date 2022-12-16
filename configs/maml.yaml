@@ -18,3 +18,24 @@ MiniFAANG-v0:
   normalize_advantage: True
   target_kl: null
   run_name: null
+
+MiniVNStock-v0:
+  num_envs: 5
+  num_tasks: 5
+  num_steps: 50
+  n_adapt_steps: 1
+  n_gradient_steps: 1
+  n_eval_episodes: 5
+  epochs: 5
+  gamma: 0.99
+  gae_lambda: 0.9
+  outer_lr: !!float 1e-3
+  inner_lr: 0.4
+  clip_coef: 0.2
+  clip_range_vf: 0.2
+  vf_coef: 0.19
+  ent_coef: 0.02
+  max_grad_norm: 5
+  normalize_advantage: True
+  target_kl: null
+  run_name: null
