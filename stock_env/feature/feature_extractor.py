@@ -35,11 +35,6 @@ class OneStockFeatures(BaseFeaturesExtractor):
         return df[self.feature_cols]
 
 class TrendFeatures(BaseFeaturesExtractor):
-    """
-    Indicators in paper: 
-    Deep Reinforcement Learning approach using customized technical indicators 
-    for a pre-emerging market: A case study of Vietnamese stock market
-    """
     
     def __init__(self):
         self.required_cols = set('time open high low close volume'.split())
@@ -132,11 +127,6 @@ class TrendFeatures(BaseFeaturesExtractor):
             return df[self.feature_cols]
 
 class SimpleFeatures(BaseFeaturesExtractor):
-    """
-    Indicators in paper: 
-    Deep Reinforcement Learning approach using customized technical indicators 
-    for a pre-emerging market: A case study of Vietnamese stock market
-    """
     
     def __init__(self):
         self.strategy = SimpleStrategy
@@ -153,3 +143,46 @@ class SimpleFeatures(BaseFeaturesExtractor):
         
         df.dropna(inplace=True)
         return df[self.feature_cols]
+
+class SimpleTrendFeatures(BaseFeaturesExtractor):
+    
+    def __init__(self):
+        self.required_cols = set('time open high low close volume'.split())
+        self.feature_cols = None
+        self.feature_dim = None
+    
+    def preprocess(self, df, return_all=False):
+        check_col(df, self.required_cols)
+        df.sort_values('time', inplace=True)
+        df = df.reset_index(drop=True)
+        
+        df.ta.adx(length=50, scalar=1, append=True)
+        df.ta.aroon(length=50, scalar=1, talib=False, append=True)
+        df.ta.stc(tclength=10, fast=10, slow=20, append=True)
+        df.ta.natr(length=50, scalar=1, talib=False, append=True)
+        df.ta.rsi(length=50, scalar=1, talib=False, append=True)
+        df.ta.cci(length=50, scalar=1, append=True)
+        df['CCI_50_0.015'] = df['CCI_50_0.015'] / 100
+        df[['STC_10_10_20_0.5', 'STCstoch_10_10_20_0.5']] = df[['STC_10_10_20_0.5', 'STCstoch_10_10_20_0.5']] / 100
+        df['RSI_candle'] = (df['RSI_50'] > 0.5).astype(int)
+
+        df.ta.macd(fast=10, slow=20, signal=10, append=True)
+        df.ta.macd(fast=20, slow=50, signal=10, append=True)
+        df.ta.macd(fast=50, slow=100, signal=10, append=True)
+        df.ta.macd(fast=100, slow=200, signal=10, append=True)
+        df['LOW_ratio'] = talib.MIN(df.low, timeperiod=20) / talib.MIN(df.low, timeperiod=50)
+        df['VOLUME_ratio'] = df.volume / talib.EMA(df.volume, timeperiod=20)
+        
+        # get feature_cols
+        df.dropna(inplace=True)
+        cols = df.columns
+        cols = cols[
+            cols.str.startswith(
+                ('MACD', 'ADX', 'AROON', 'STC', 'NATR', 'RSI', 'CCI', 'DMP'))
+            | cols.str.endswith('ratio')]
+        self.feature_cols = cols.tolist()
+        self.feature_dim = len(self.feature_cols)
+        if return_all:
+            return df
+        else:
+            return df[self.feature_cols]
