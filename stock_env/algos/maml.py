@@ -13,6 +13,9 @@ from stock_env.algos.agent import MetaAgent
 from stock_env.envs import MetaVectorEnv
 from stock_env.common.evaluation import evaluate_agent
 
+# GLOBALS
+global_step = 0
+
 @th.no_grad()
 def _meta_collect_rollout(
     agent, 
@@ -27,9 +30,10 @@ def _meta_collect_rollout(
     obs, _ = envs.reset()
     dones = th.zeros((envs.num_envs,))
     obs = th.Tensor(obs).to(device).to(th.float32)
-
+    
     for step in range(buffer.num_steps):
-        
+        global global_step
+        global_step += 1 * envs.num_envs
         actions, values, log_probs, _ = agent.get_action_and_value(obs, params=params)
         values = values.flatten()
 
@@ -58,9 +62,8 @@ def _meta_collect_rollout(
                     if "episode" in info.keys():
                         
                         epoch = globals()['epoch']
-                        global_step = globals()['global_step']
                         
-                        if global_step % 10 == 0:
+                        if global_step % (envs.num_envs * 5) == 0:
                             print(f"global_step={global_step}, episodic_return={info['episode']['r'].item() :.2f}, epoch={epoch}")
                         writer.add_scalar("episode/return", info["episode"]["r"], epoch)
                         writer.add_scalar("episode/length", info["episode"]["l"], epoch)
@@ -160,7 +163,7 @@ def get_task_loss(
         vf_coef=args.vf_coef,)
     return loss
 
-def adapt(args, meta_agent, meta_env, buffer, n_adapt_steps):
+def adapt(args, meta_agent, meta_env, buffer, n_adapt_steps, writer=None):
     
     params = None
     l_loss = []
@@ -171,6 +174,7 @@ def adapt(args, meta_agent, meta_env, buffer, n_adapt_steps):
             meta_env=meta_env,
             buffer=buffer,
             params=params,
+            writer=writer,
         )
         l_loss.append(inner_loss.item()) # logging
         
@@ -186,7 +190,7 @@ def adapt(args, meta_agent, meta_env, buffer, n_adapt_steps):
 
 if __name__ == '__main__':
     
-    env_id = 'MiniFAANG-v0'
+    env_id = 'SP500-v0'
     
     # read config from yaml
     with open('configs/maml.yaml') as f:
@@ -195,9 +199,9 @@ if __name__ == '__main__':
         args = SimpleNamespace(**args)
 
     if args.run_name is None:
-        run_name = f'maml_minifaang_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        run_name = f'maml_{env_id}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
     else:
-        run_name = f'{args.run_name}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        run_name = f'maml_{args.run_name}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
     
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
     
@@ -208,7 +212,7 @@ if __name__ == '__main__':
 
     writer = SummaryWriter(f"log/{run_name}")
     try:
-        global_step, best_value, save_model = 0, None, False
+        best_value, save_model = None, False
         
         for epoch in range(args.epochs):
             
@@ -216,13 +220,13 @@ if __name__ == '__main__':
             outer_loss = th.tensor(0., device=device)
             task_inner_losses = []
             for task_idx, task in enumerate(tasks):
-                global_step += 1 * args.num_tasks
+
                 meta_env.reset_task(task)
                 
                 meta_agent.train()
                 meta_env.train()
                 # adapt
-                params, inner_loss = adapt(args, meta_agent, meta_env, buffer, n_adapt_steps=1)
+                params, inner_loss = adapt(args, meta_agent, meta_env, buffer, n_adapt_steps=1, writer=writer)
                 task_inner_losses.append(inner_loss.item()) # logging
                 
                 # validation
