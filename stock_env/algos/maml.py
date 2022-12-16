@@ -133,7 +133,7 @@ def _compute_ppo_loss(
         loss = policy_loss + ent_coef * entropy_loss + vf_coef * value_loss
     return loss
 
-def get_inner_loss(
+def get_task_loss(
     args,
     meta_agent, 
     meta_env, 
@@ -160,12 +160,12 @@ def get_inner_loss(
         vf_coef=args.vf_coef,)
     return loss
 
-def adapt(args, meta_agent, meta_env, buffer):
+def adapt(args, meta_agent, meta_env, buffer, n_adapt_steps):
     
     params = None
     l_loss = []
-    for _ in range(args.n_adapt_steps):
-        inner_loss = get_inner_loss(
+    for _ in range(n_adapt_steps):
+        inner_loss = get_task_loss(
             args=args,
             meta_agent=meta_agent,
             meta_env=meta_env,
@@ -222,12 +222,12 @@ if __name__ == '__main__':
                 meta_agent.train()
                 meta_env.train()
                 # adapt
-                params, inner_loss = adapt(args, meta_agent, meta_env, buffer)
+                params, inner_loss = adapt(args, meta_agent, meta_env, buffer, n_adapt_steps=1)
                 task_inner_losses.append(inner_loss.item()) # logging
                 
                 # validation
                 meta_env.train(False)
-                valid_loss = get_inner_loss(args, meta_agent, meta_env, buffer, params)
+                valid_loss = get_task_loss(args, meta_agent, meta_env, buffer, params)
                 
                 outer_loss += valid_loss
 
