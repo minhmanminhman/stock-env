@@ -5,8 +5,8 @@ import yfinance
 from .base import BaseDataLoader
 from ..feature import BaseFeaturesExtractor
 from stock_env.common.common_utils import check_col
-import vnquant.data as vqdt
-
+# import vnquant.data as vqdt
+from stock_env.data_loader.vndirect_loader import VNDDataLoader
 
 class RandomStockLoader(BaseDataLoader):
     
@@ -190,20 +190,22 @@ class VNStockLoader(RandomStockLoader):
     
     def _load_data(self):
         # download data
-        data_loader = vqdt.DataLoader(
+        data_loader = VNDDataLoader(
             symbols=self.tickers,
             start=self.start_date,
             end=self.end_date,
-            minimal=True,
-            data_source="vnd"
         )
         data = data_loader.download()
-        data = data.stack().reset_index().rename(
+        data = data[['date', 'adOpen', 'adHigh', 'adLow', 'adClose', 'volume', 'code']]
+        data = data.rename(
             columns={
-                'Symbols': 'ticker',
+                'code': 'ticker',
                 'date': 'time',
+                'adOpen': 'open',
+                'adHigh': 'high',
+                'adLow': 'low',
+                'adClose': 'close',
             }
         )
-        data = data[['time', 'open', 'high', 'low', 'close', 'volume', 'ticker']]
-        data = data.sort_values(by='time')
+        data = data.sort_values(by='time').reset_index(drop=True)
         return data
