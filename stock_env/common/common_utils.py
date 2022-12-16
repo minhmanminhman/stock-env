@@ -2,6 +2,7 @@ import warnings
 warnings.filterwarnings('ignore')
 import yaml
 from types import SimpleNamespace
+from typing import List, Dict, Tuple, Union
 import pandas as pd
 import matplotlib.pyplot as plt
 from pyfolio.plotting import (
@@ -40,8 +41,8 @@ def plot_trade_log(data: pd.DataFrame):
     
 def plot_trade_log_v2(data: pd.DataFrame):
     fig, ax = plt.subplots(2, 1, figsize=(15,8))
-    
-    ax[0].set_title('Trade log')
+    ticker = data['ticker_x'].unique()[0]
+    ax[0].set_title(f'Trade log, Ticker: {ticker}')
     #TODO: rename
     ax[0].plot(data['time'], data['close'], label='Price')
     
@@ -67,21 +68,40 @@ def plot_trade_log_v2(data: pd.DataFrame):
     ax[1].plot(data.index, data['quantity'], label='Quantity')
     ax[1].legend()
 
-def create_performance(returns: pd.Series):
-    print(
-    f"""
-    Annual return     : {annual_return(returns) * 100: .2f}%
-    Cumulative return : {cum_returns_final(returns) * 100: .2f}%
-    Sharpe ratio      : {sharpe_ratio(returns): .2f}
-    Maximum Drawdown  : {max_drawdown(returns) * 100: .2f}%
-    Annual Volatility : {annual_volatility(returns) * 100: .2f}%
-    Value-At-Risk     : {value_at_risk(returns) * 100: .2f}%
-    """)
+def create_performance(returns: pd.Series, plot=True):
+    # apply many functions to returns
+    l_func = [
+        annual_return, 
+        cum_returns_final, 
+        sharpe_ratio, 
+        max_drawdown, 
+        annual_volatility, 
+        value_at_risk
+    ]
+    l_results = map(lambda x: x(returns), l_func)
     
-    fig, axs = plt.subplots(3,1, figsize=(12,10))
-    plot_rolling_returns(returns, ax=axs[0])
-    plot_drawdown_underwater(returns, ax=axs[1])
-    plot_monthly_returns_heatmap(returns, ax=axs[2])
+    results = {}
+    for func, result in zip(l_func, l_results):
+        results.update({str(func.__name__): result})
+
+    if plot:
+        print(
+        f"""
+        Annual return     : {results['annual_return'] * 100: .2f}%
+        Cumulative return : {results['cum_returns_final'] * 100: .2f}%
+        Sharpe ratio      : {results['sharpe_ratio']: .2f}
+        Maximum Drawdown  : {results['max_drawdown'] * 100: .2f}%
+        Annual Volatility : {results['annual_volatility'] * 100: .2f}%
+        Value-At-Risk     : {results['value_at_risk'] * 100: .2f}%
+        """)
+        
+        fig, axs = plt.subplots(3,1, figsize=(12,10))
+        fig.suptitle('Trading performance')
+        plot_rolling_returns(returns, ax=axs[0])
+        plot_drawdown_underwater(returns, ax=axs[1])
+        plot_monthly_returns_heatmap(returns, ax=axs[2])
+    
+    return results
     
 def check_col(x: pd.DataFrame, to_check):
    if not set(to_check).issubset(set(x.columns)):
@@ -188,13 +208,14 @@ def plot_quantity(df, ax):
     # plot quantity
     df['quantity'].plot(ax=ax, legend='Quantity')
     
-def open_config(path, env_id) -> SimpleNamespace:
+def open_config(path, env_id, is_args=True) -> Union[SimpleNamespace, Dict]:
     
-    with open('../configs/maml.yaml') as f:
+    with open(path) as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
     try:
         args = config[env_id]
-        args = SimpleNamespace(**args)
+        if is_args:
+            args = SimpleNamespace(**args)
     except KeyError:        
         raise KeyError(f"Environment {env_id} not found in config file")
     
