@@ -2,7 +2,10 @@ from .base_env import *
 from .random_stock import *
 from stock_env.envs.task_stock import *
 from stock_env.envs.vec_task_env import *
+from stock_env.common.common_utils import open_config
 from gymnasium import register
+import pathlib
+config_path = pathlib.Path(__file__).parent.parent.parent.joinpath('configs').resolve()
 
 def create_env(name):
     def make_env():
@@ -87,14 +90,14 @@ register(
     id=f"MiniFAANG-v0",
     entry_point=make_task_env(
         name='mini_faang', 
-        env_kwargs={'lot_size': 1}
+        env_kwargs=open_config(f'{config_path}/envs.yaml', env_id="MiniFAANG-v0", is_args=False)
     ),
 )
 
 register(
-    id=f"MiniVNStock-v0",
+    id="MiniVNStock-v0",
     entry_point=make_task_env(
         name='mini_vnstock', 
-        env_kwargs={'lot_size': 100, 'init_cash': 500000}
+        env_kwargs=open_config(f'{config_path}/envs.yaml', env_id="MiniVNStock-v0", is_args=False)
     ),
 )
