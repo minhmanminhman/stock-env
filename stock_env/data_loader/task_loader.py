@@ -46,7 +46,7 @@ class USTaskLoader(USStockLoader, BaseTaskLoader):
             idxes = self.train_idxes
         else:
             idxes = self.test_idxes
-        assert len(idxes) > 0
+        assert len(idxes) > 0, f"Ticker: {self.episode_ticker}, length: {self.ohlcv.shape[0]}"
         start_tick = np.random.choice(idxes)
         end_tick = min(start_tick + self.max_episode_steps, self._end_tick)
         
@@ -102,7 +102,7 @@ class VNTaskLoader(VNStockLoader, BaseTaskLoader):
         else:
             idxes = self.test_idxes
         
-        assert len(idxes) > 0
+        assert len(idxes) > 0, f"Ticker: {self.episode_ticker}, length: {len(self.ohlcv.shape[0])}"
         start_tick = np.random.choice(idxes)
         end_tick = min(start_tick + self.max_episode_steps, self._end_tick)
         
