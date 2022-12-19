@@ -3,8 +3,8 @@ import torch as th
 import numpy as np
 from typing import NamedTuple
 
+
 class RolloutBuffer:
-    
     class RolloutBufferSamples(NamedTuple):
         obs: th.Tensor
         actions: th.Tensor
@@ -12,12 +12,12 @@ class RolloutBuffer:
         logprobs: th.Tensor
         advantages: th.Tensor
         returns: th.Tensor
-    
+
     def __init__(
         self,
         num_steps: int,
         envs: SyncVectorEnv,
-        device: str = 'cpu',
+        device: str = "cpu",
         gamma: float = 0.99,
         gae_lambda: float = 0.95,
     ):
@@ -26,13 +26,26 @@ class RolloutBuffer:
         self.num_envs = envs.num_envs
         self.gamma = gamma
         self.gae_lambda = gae_lambda
-        
-        self.obs = th.zeros((num_steps, self.num_envs) + envs.single_observation_space.shape).to(device)
-        self.actions = th.zeros((num_steps, self.num_envs) + envs.single_action_space.shape).to(device)
-        self.logprobs = th.zeros((num_steps, self.num_envs)).to(device)
-        self.rewards = th.zeros((num_steps, self.num_envs)).to(device)
-        self.dones = th.zeros((num_steps, self.num_envs)).to(device)
-        self.values = th.zeros((num_steps, self.num_envs)).to(device)
+        self.obs_dim = envs.single_observation_space.shape
+        self.action_dim = envs.single_action_space.shape
+        self.obs = None
+        self.actions = None
+        self.logprobs = None
+        self.rewards = None
+        self.dones = None
+        self.values = None
+
+    def reset(self):
+        self.obs = th.zeros((self.num_steps, self.num_envs) + self.obs_dim).to(
+            self.device
+        )
+        self.actions = th.zeros((self.num_steps, self.num_envs) + self.action_dim).to(
+            self.device
+        )
+        self.logprobs = th.zeros((self.num_steps, self.num_envs)).to(self.device)
+        self.rewards = th.zeros((self.num_steps, self.num_envs)).to(self.device)
+        self.dones = th.zeros((self.num_steps, self.num_envs)).to(self.device)
+        self.values = th.zeros((self.num_steps, self.num_envs)).to(self.device)
 
     def add(self, index, obs, actions, logprobs, rewards, dones, values):
         self.obs[index] = obs
@@ -52,20 +65,26 @@ class RolloutBuffer:
             else:
                 nextnonterminal = 1.0 - self.dones[t + 1]
                 nextvalues = self.values[t + 1]
-            delta = self.rewards[t] + self.gamma * nextvalues * nextnonterminal - self.values[t]
-            self.advantages[t] = lastgaelam = delta + self.gamma * self.gae_lambda * nextnonterminal * lastgaelam
+            delta = (
+                self.rewards[t]
+                + self.gamma * nextvalues * nextnonterminal
+                - self.values[t]
+            )
+            self.advantages[t] = lastgaelam = (
+                delta + self.gamma * self.gae_lambda * nextnonterminal * lastgaelam
+            )
         self.returns = self.advantages + self.values
 
     def get(self, batch_size: int = None):
         indices = np.random.permutation(self.num_steps)
-        
+
         # Return everything, don't create minibatches
         if batch_size is None:
             batch_size = self.num_steps
 
         start_idx = 0
         while start_idx < self.num_steps:
-            _indices = indices[start_idx:start_idx + batch_size]
+            _indices = indices[start_idx : start_idx + batch_size]
             yield self.RolloutBufferSamples(
                 obs=self.obs[_indices],
                 actions=self.actions[_indices],
