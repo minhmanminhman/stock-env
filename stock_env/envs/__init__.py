@@ -85,6 +85,14 @@ register(
 )
 
 register(
+    id=f"VNALL-v0",
+    entry_point=make_task_env(
+        name='vnall',
+        env_kwargs=open_config(f'{config_path}/envs.yaml', env_id="VNALL-v0", is_args=False)
+    ),
+)
+
+register(
     id=f"FAANGTask-v0",
     entry_point=make_task_env('faang_task_loader'),
 )
