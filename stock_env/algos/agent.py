@@ -111,8 +111,13 @@ class MetaAgent(MetaModule):
         value = self.critic(x, params=self.get_subdict(params, "critic"))
         return action, value, probs.log_prob(action).view(-1), probs.entropy().view(-1)
 
-    def get_action(self, x, params=None):
+    def get_action(self, x, params=None, deterministic=False):
         action_mean = self.actor_mean(x, params=self.get_subdict(params, "actor_mean"))
         action_logstd = self.actor_logstd.expand_as(action_mean)
         action_std = th.exp(action_logstd)
-        return Normal(action_mean, action_std).sample()
+        distribution = Normal(action_mean, action_std)
+
+        if deterministic:
+            return distribution.mean
+        else:
+            return Normal(action_mean, action_std).sample()

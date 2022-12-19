@@ -175,6 +175,7 @@ class ExperimentManager:
             assert method in self.meta_params.keys(), f"method '{method}' not found"
 
         for method in methods:
+            output_params[method] = {}
             for task in tasks:
                 envs.reset_task(task)
                 agent = deepcopy(self.init_agent)
@@ -199,9 +200,7 @@ class ExperimentManager:
                     perf = create_performance(returns, plot=False)
 
                     for metric, value in perf.items():
-                        perf_df.loc[(ith_adapt, task, metric), method] = round(
-                            value * 100, 299
-                        )
+                        perf_df.loc[(ith_adapt, task, metric), method] = round(value, 5)
                 # save params
                 output_params[method][task] = l_params
         return perf_df, output_params

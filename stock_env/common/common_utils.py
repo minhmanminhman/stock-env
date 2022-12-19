@@ -65,7 +65,7 @@ def plot_trade_log_v2(data: pd.DataFrame):
     ax[1].grid(True)
     ax[1].set_title('Quantity')
     #TODO: rename
-    ax[1].plot(data.index, data['quantity'], label='Quantity')
+    ax[1].plot(data['time'], data['quantity'], label='Quantity')
     ax[1].legend()
 
 def create_performance(returns: pd.Series, plot=True):
