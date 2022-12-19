@@ -1,15 +1,36 @@
 SP500-v0:
   num_envs: 5
+  num_tasks: 20
+  num_steps: 250
+  n_adapt_steps: 1
+  n_eval_episodes: 5
+  epochs: 100
+  gamma: 0.99
+  gae_lambda: 0.9
+  outer_lr: 0.01
+  inner_lr: 0.01
+  clip_coef: 0.1
+  clip_range_vf: 0.1
+  vf_coef: 0.05
+  ent_coef: 0.1
+  max_grad_norm: 10
+  normalize_advantage: True
+  target_kl: null
+  run_name: 'sp500'
+  hiddens: [64, 64]
+
+VNALL-v0:
+  num_envs: 5
   num_tasks: 10
   num_steps: 250
   n_adapt_steps: 1
   n_gradient_steps: 3
-  n_eval_episodes: 5
-  epochs: 5
+  n_eval_episodes: 20
+  epochs: 100
   gamma: 0.99
   gae_lambda: 0.9
-  outer_lr: !!float 1e-3
-  inner_lr: 0.2
+  outer_lr: 0.1
+  inner_lr: 0.1
   clip_coef: 0.1
   clip_range_vf: 0.1
   vf_coef: 0.1
@@ -17,7 +38,8 @@ SP500-v0:
   max_grad_norm: 10
   normalize_advantage: True
   target_kl: null
-  run_name: 'sp500'
+  run_name: 'vnall'
+  hiddens: [64, 64]
 
 MiniFAANG-v0:
   num_envs: 5

@@ -9,3 +9,7 @@ MiniVNStock-v0:
 SP500-v0:
   lot_size: 1
   init_cash: 100000
+
+VNALL-v0:
+  lot_size: 100
+  init_cash: 500000
