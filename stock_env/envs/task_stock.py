@@ -1,10 +1,11 @@
 from ..data_loader import BaseTaskLoader
 from .random_stock import RandomStockEnv
 
+
 class TaskStockEnv(RandomStockEnv):
-     
+
     metadata = {"render_modes": ["human", "rgb_array"]}
-    
+
     def __init__(
         self,
         data_loader: BaseTaskLoader,
@@ -18,14 +19,14 @@ class TaskStockEnv(RandomStockEnv):
             lot_size=lot_size,
             init_cash=init_cash,
             random_seed=random_seed,
-            fee=fee
+            fee=fee,
         )
-    
+
     def reset_task(self, task: str) -> None:
         self.data_loader.reset_task(task)
-    
+
     def sample_task(self) -> str:
         return self.data_loader.sample_task()
-    
+
     def train(self, mode: bool = True):
         self.data_loader.train(mode)
