@@ -41,7 +41,7 @@ def make_task_env(name, gamma=0.99, env_kwargs={}):
         env.reset_task(_task)
 
         # wrap env
-        # env = StackAndSkipObs(env, num_stack=5, num_skip=3)
+        env = StackAndSkipObs(env, num_stack=5, num_skip=3)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
         env = gym.wrappers.NormalizeObservation(env)

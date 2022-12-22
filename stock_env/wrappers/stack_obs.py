@@ -16,8 +16,8 @@ class StackAndSkipObs(gym.Wrapper):
         )
         self.obs_buffer = deque(maxlen=num_stack)
 
-    def reset(self, **kwargs):
-        obs, info = self.env.reset(**kwargs)
+    def reset(self):
+        obs, info = self.env.reset()
         [self.obs_buffer.append(obs) for _ in range(self.num_stack)]
         return self._get_observation(), info
 
