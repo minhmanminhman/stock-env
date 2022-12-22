@@ -5,15 +5,15 @@ from stock_env.envs import *
 from stock_env.common.evaluation import play_an_episode
 from stock_env.algos.agent import MetaAgent
 
-if __name__ == '__main__':
-    
-    task_env = MetaVectorEnv([lambda: gym.make('FAANGTask-v0') for _ in range(1)])
+if __name__ == "__main__":
+
+    task_env = MetaVectorEnv([lambda: gym.make("FAANGTask-v0") for _ in range(1)])
     agent = MetaAgent(task_env)
-    state_dict = th.load('/Users/manbnm/stock-env/model/maml_2022-12-04_15-00-17.pth')
+    state_dict = th.load("/Users/manbnm/stock-env/model/maml_2022-12-04_15-00-17.pth")
     agent.load_state_dict(state_dict)
     agent.eval()
     task_env.train(False)
-    
+
     list_task = task_env.sample_task(1)
     print(f"Ticker: {list_task[0]}")
     task_env.reset_task(list_task[0])
@@ -32,4 +32,3 @@ if __name__ == '__main__':
         obs = th.Tensor(obs)
         if any(dones):
             print(info)
-            

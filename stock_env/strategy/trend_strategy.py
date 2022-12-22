@@ -17,7 +17,7 @@ TrendStrategy = ta.Strategy(
         {"kind": "natr", "length": 20, "scalar": 1, "talib": False},
         {"kind": "rsi", "length": 20, "scalar": 1, "talib": False},
         {"kind": "cci", "length": 20},
-    ]
+    ],
 )
 
 CommonStrategy = ta.Strategy(
@@ -30,7 +30,7 @@ CommonStrategy = ta.Strategy(
         {"kind": "adx", "length": 14},
         {"kind": "bbands"},
         {"kind": "macd"},
-    ]
+    ],
 )
 
 SimpleStrategy = ta.Strategy(
@@ -39,5 +39,5 @@ SimpleStrategy = ta.Strategy(
     ta=[
         {"kind": "sma", "length": 10},
         {"kind": "rsi", "length": 14},
-    ]
+    ],
 )

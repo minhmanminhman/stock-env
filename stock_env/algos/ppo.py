@@ -23,10 +23,12 @@ def make_env(env_id, seed, gamma):
         env.action_space.seed(seed)
         env.observation_space.seed(seed)
         return env
+
     return thunk
 
-if __name__ == '__main__':
-    env_id = 'SP500-v0'
+
+if __name__ == "__main__":
+    env_id = "SP500-v0"
     num_envs = 8
     num_steps = 8
     total_timesteps = 150
@@ -51,58 +53,71 @@ if __name__ == '__main__':
     # envs = SyncVectorEnv([make_env(env_id, seed, gamma) for _ in range(num_envs)])
     envs = gym.vector.make(env_id, num_envs=num_envs, asynchronous=False)
     writer = SummaryWriter(f"log/{run_name}")
-    buffer = RolloutBuffer(num_steps, envs, device=device, gamma=gamma, gae_lambda=gae_lambda)
+    buffer = RolloutBuffer(
+        num_steps, envs, device=device, gamma=gamma, gae_lambda=gae_lambda
+    )
 
     agent = Agent(envs)
     optimizer = optim.Adam(agent.parameters(), lr=learning_rate, eps=1e-5)
-    
+
     obs, infos = envs.reset()
     dones = th.zeros((num_envs,))
     obs = th.Tensor(obs).to(device)
     global_step = 0
     n_train_episodes = 0
-    
+
     for epoch in range(epoches):
-        """ Rollout to fill the buffer """
+        """Rollout to fill the buffer"""
         for step in range(num_steps):
             global_step += 1 * num_envs
             with th.no_grad():
                 actions, values, log_probs, _ = agent.get_action_and_value(obs)
                 values = values.flatten()
 
-            next_obs, rewards, next_terminated, next_truncated, next_infos = \
-                envs.step(actions.cpu().numpy())
+            next_obs, rewards, next_terminated, next_truncated, next_infos = envs.step(
+                actions.cpu().numpy()
+            )
             next_obs = th.Tensor(next_obs).to(device)
             rewards = th.Tensor(rewards).to(device).flatten()
-            next_dones = th.Tensor(next_terminated | next_truncated).to(device).flatten()
-            
+            next_dones = (
+                th.Tensor(next_terminated | next_truncated).to(device).flatten()
+            )
+
             if any(next_dones):
                 # find which envs are done
                 idx = np.where(next_dones)[0]
                 n_train_episodes += len(idx)
                 # Handle timeout by bootstraping with value function
-                # NOTES: for timeout env    
+                # NOTES: for timeout env
                 if is_timeout:
                     final_observation = next_infos["final_observation"][idx][0]
                     # calculated value of final observation
                     with th.no_grad():
-                        final_value = agent.get_value(th.Tensor(final_observation).to(device))
+                        final_value = agent.get_value(
+                            th.Tensor(final_observation).to(device)
+                        )
                     rewards[idx] += gamma * final_value
-                
+
                 # logging
                 final_infos = next_infos["final_info"][idx]
                 for info in final_infos:
                     if "episode" in info.keys():
-                        print(f"global_step={global_step}, episodic_return={info['episode']['r']}, n_train_episodes={n_train_episodes}")
-                        writer.add_scalar("episode/return", info["episode"]["r"], global_step)
-                        writer.add_scalar("episode/length", info["episode"]["l"], global_step)
+                        print(
+                            f"global_step={global_step}, episodic_return={info['episode']['r']}, n_train_episodes={n_train_episodes}"
+                        )
+                        writer.add_scalar(
+                            "episode/return", info["episode"]["r"], global_step
+                        )
+                        writer.add_scalar(
+                            "episode/length", info["episode"]["l"], global_step
+                        )
                         break
-            
+
             # add to buffer
             buffer.add(
-                index=step, 
-                obs=obs, 
-                actions=actions, 
+                index=step,
+                obs=obs,
+                actions=actions,
                 logprobs=log_probs,
                 rewards=rewards,
                 dones=dones,
@@ -122,14 +137,18 @@ if __name__ == '__main__':
         value_losses, entropy_losses = [], []
         # Do a complete pass on the rollout buffer
         for rollout_data in buffer.get():
-            _, values, log_prob, entropy = agent.get_action_and_value(rollout_data.obs, rollout_data.actions)
+            _, values, log_prob, entropy = agent.get_action_and_value(
+                rollout_data.obs, rollout_data.actions
+            )
             values = values.view(-1)
-            
+
             # Normalize advantage
             advantages = rollout_data.advantages
             # Normalization does not make sense if mini batchsize == 1, see GH issue #325
             if normalize_advantage:
-                advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+                advantages = (advantages - advantages.mean()) / (
+                    advantages.std() + 1e-8
+                )
 
             # ratio between old and new policy, should be one at the first iteration
             log_ratio = log_prob - rollout_data.logprobs
@@ -158,7 +177,7 @@ if __name__ == '__main__':
                 values_pred = rollout_data.values + th.clamp(
                     values - rollout_data.values, -clip_range_vf, clip_range_vf
                 )
-            
+
             # Value loss using the TD(gae_lambda) target
             # print(rollout_data.returns)
             # print(values_pred)
@@ -183,7 +202,9 @@ if __name__ == '__main__':
             # and Schulman blog: http://joschu.net/blog/kl-approx.html
             with th.no_grad():
                 log_ratio = log_prob - rollout_data.logprobs
-                approx_kl_div = th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
+                approx_kl_div = (
+                    th.mean((th.exp(log_ratio) - 1) - log_ratio).cpu().numpy()
+                )
                 approx_kl_divs.append(approx_kl_div)
 
             if target_kl is not None:
@@ -197,7 +218,10 @@ if __name__ == '__main__':
             th.nn.utils.clip_grad_norm_(agent.parameters(), max_grad_norm)
             optimizer.step()
 
-        y_pred, y_true = rollout_data.values.cpu().numpy(), rollout_data.returns.cpu().numpy()
+        y_pred, y_true = (
+            rollout_data.values.cpu().numpy(),
+            rollout_data.returns.cpu().numpy(),
+        )
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
@@ -209,30 +233,32 @@ if __name__ == '__main__':
         writer.add_scalar("train/clip_fraction", np.mean(clipfracs), global_step)
         writer.add_scalar("train/loss", loss.item(), global_step)
         writer.add_scalar("train/explained_variance", explained_var, global_step)
-    
+
     envs.close()
     writer.close()
 
-    
     # evaluation
     episode_rewards = []
     episode_lengths = []
     episode_counts = np.zeros(num_envs, dtype="int")
     # Divides episodes among different sub environments in the vector as evenly as possible
-    episode_count_targets = np.array([(n_eval_episodes + i) // num_envs for i in range(num_envs)], dtype="int")
-    
+    episode_count_targets = np.array(
+        [(n_eval_episodes + i) // num_envs for i in range(num_envs)], dtype="int"
+    )
+
     next_obs, next_infos = envs.reset()
     next_obs = th.Tensor(next_obs).to(device)
-    
+
     while (episode_counts < episode_count_targets).any():
         with th.no_grad():
             actions = agent.get_action(next_obs)
-        
-        next_obs, rewards, next_terminated, next_truncated, next_infos = \
-            envs.step(actions.cpu().numpy())
+
+        next_obs, rewards, next_terminated, next_truncated, next_infos = envs.step(
+            actions.cpu().numpy()
+        )
         dones = next_terminated | next_truncated
         next_obs = th.Tensor(next_obs).to(device)
-        
+
         if any(dones):
             # find which envs are done
             idx = np.where(dones)[0]
@@ -250,7 +276,7 @@ if __name__ == '__main__':
     mean_length = np.mean(episode_lengths)
     std_length = np.std(episode_lengths)
     print(f"Mean lengths: {mean_length:.2f} +/- {std_length: .2f}")
-    
+
     th.save(agent.state_dict(), f"model/{env_id}_{run_name}.pth")
-    
+
     envs.close()

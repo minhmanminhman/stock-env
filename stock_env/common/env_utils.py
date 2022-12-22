@@ -4,6 +4,7 @@ import numpy as np
 import torch as th
 from gym import spaces
 
+
 def get_obs_shape(observation_space: spaces.Space) -> Tuple[int, ...]:
     """
     Get the shape of the observation (useful for the buffers).
@@ -24,6 +25,7 @@ def get_obs_shape(observation_space: spaces.Space) -> Tuple[int, ...]:
     else:
         raise NotImplementedError()
 
+
 def get_action_dim(action_space: spaces.Space) -> int:
     """
     Get the dimension of the action space.
@@ -43,6 +45,7 @@ def get_action_dim(action_space: spaces.Space) -> int:
         return int(action_space.n)
     else:
         raise NotImplementedError()
+
 
 def get_device(device: Union[th.device, str] = "auto") -> th.device:
     """

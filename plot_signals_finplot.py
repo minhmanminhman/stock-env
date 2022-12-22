@@ -4,17 +4,17 @@ import pandas as pd
 import pandas_ta as ta
 from stock_env.feature.feature_extractor import *
 
-env = 'VietnamStockContinuousEnv'
-algo = 'ppo'
+env = "VietnamStockContinuousEnv"
+algo = "ppo"
 ticker = "SSI"
 path = "../stock_datasets/"
 feature_extractor = TrendFeatures()
 # name = f"ticker_history_{algo}_{env}_{feature_extractor.__class__.__name__}"
 name = f"PPO_BufferWrapper_TrendFeatures_finservice"
 
-df = pd.read_csv(f'temp/history/{name}.csv')
-df.sort_values(by='time', inplace=True)
-df.index = pd.to_datetime(df['time'])
+df = pd.read_csv(f"temp/history/{name}.csv")
+df.sort_values(by="time", inplace=True)
+df.index = pd.to_datetime(df["time"])
 df = plot_format(df)
 
 ax = fplt.create_plot(ticker, rows=2)

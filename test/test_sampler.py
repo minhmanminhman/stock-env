@@ -4,9 +4,10 @@ import torch as th
 import numpy as np
 from stock_env.algos.agent import Agent
 
+
 def make_env(env_id, seed, gamma):
     def thunk():
-        env = gym.make(env_id, render_mode='human')
+        env = gym.make(env_id, render_mode="human")
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
         env = gym.wrappers.NormalizeObservation(env)
@@ -16,13 +17,19 @@ def make_env(env_id, seed, gamma):
         env.action_space.seed(seed)
         env.observation_space.seed(seed)
         return env
+
     return thunk
 
-if __name__ == '__main__':    
 
-    envs = SyncVectorEnv([make_env('MountainCarContinuous-v0', None, 0.999) for _ in range(1)])
+if __name__ == "__main__":
+
+    envs = SyncVectorEnv(
+        [make_env("MountainCarContinuous-v0", None, 0.999) for _ in range(1)]
+    )
     agent = Agent(envs)
-    agent.load_state_dict(th.load("/Users/manbnm/stock-env/model/mountain_car_agent.pth"))
+    agent.load_state_dict(
+        th.load("/Users/manbnm/stock-env/model/mountain_car_agent.pth")
+    )
     # env = gym.make('MountainCarContinuous-v0', render_mode='human')
 
     obs, infos = envs.reset()
