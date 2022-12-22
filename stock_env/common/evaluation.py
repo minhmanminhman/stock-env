@@ -23,7 +23,7 @@ def evaluate_agent(agent, envs, n_eval_episodes, device="cpu"):
     episode_lengths = []
     while (episode_counts < episode_count_targets).any():
         with th.no_grad():
-            actions = agent.get_action(next_obs)
+            actions = agent.get_action(next_obs, deterministic=True)
 
         next_obs, rewards, next_terminated, next_truncated, next_infos = envs.step(
             actions.cpu().numpy()
@@ -65,7 +65,7 @@ def play_an_episode(agent, envs, device="cpu"):
 
     while not any(dones):
         with th.no_grad():
-            actions = agent.get_action(obs)
+            actions = agent.get_action(obs, deterministic=True)
 
         obs, _, terminated, truncated, info = envs.step(actions.cpu().numpy())
         dones = terminated | truncated
