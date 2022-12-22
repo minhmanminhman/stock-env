@@ -61,11 +61,14 @@ class Agent(nn.Module):
             probs.entropy().view(-1),
         )
 
-    def get_action(self, x):
+    def get_action(self, x, deterministic=False):
         action_mean = self.actor_mean(x)
         action_logstd = self.actor_logstd.expand_as(action_mean)
         action_std = th.exp(action_logstd)
-        return Normal(action_mean, action_std).sample()
+        distribution = Normal(action_mean, action_std)
+        if deterministic:
+            return distribution.mean
+        return distribution.sample()
 
 
 class MetaAgent(MetaModule):
@@ -119,5 +122,4 @@ class MetaAgent(MetaModule):
 
         if deterministic:
             return distribution.mean
-        else:
-            return Normal(action_mean, action_std).sample()
+        return distribution.sample()
