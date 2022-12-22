@@ -13,6 +13,7 @@ from stock_env.algos.buffer import RolloutBuffer
 from stock_env.algos.agent import MetaAgent
 from stock_env.envs import MetaVectorEnv
 from stock_env.common.evaluation import evaluate_agent
+from stock_env.common.common_utils import get_linear_fn
 
 # GLOBALS
 logging.basicConfig(
@@ -77,7 +78,7 @@ def _meta_collect_rollout(
                     logging.info(
                         f"global_step={global_step}, episodic_return={mean_reward :.2f}, epoch={epoch}"
                     )
-                writer.add_scalar("episode/return", mean_reward, global_step)
+                writer.add_scalar("metric/train_reward", mean_reward, global_step)
 
         # add to buffer
         buffer.add(
@@ -231,7 +232,12 @@ if __name__ == "__main__":
     )
     meta_agent = MetaAgent(meta_env, hiddens=args.hiddens).to(device)
     meta_optimizer = th.optim.Adam(meta_agent.parameters(), lr=args.outer_lr)
-
+    scheduler = th.optim.lr_scheduler.StepLR(
+        meta_optimizer, step_size=args.epochs // 2, gamma=0.8
+    )
+    ent_coef_scheduler = get_linear_fn(
+        start=args.ent_coef, end=args.ent_coef_final, end_fraction=0.3
+    )
     logging.info(meta_agent)
     writer = SummaryWriter(f"log/{run_name}")
 
@@ -272,6 +278,8 @@ if __name__ == "__main__":
             meta_optimizer.zero_grad()
             outer_loss.backward()
             meta_optimizer.step()
+            scheduler.step()
+            args.ent_coef = ent_coef_scheduler(1 - epoch / args.epochs)
 
             # MISC JOBS
             # logging
@@ -279,14 +287,17 @@ if __name__ == "__main__":
             writer.add_scalar(
                 "train/mean_inner_loss_over_tasks", np.mean(task_inner_losses), epoch
             )
+            writer.add_scalar("train/lr", meta_optimizer.param_groups[0]["lr"], epoch)
+            writer.add_scalar("train/ent_coef", args.ent_coef, epoch)
 
             # Save best model
             eval_tasks = eval_meta_env.sample_task(eval_meta_env.num_envs)
             for task, env in zip(eval_tasks, eval_meta_env.envs):
                 env.reset_task(task)
 
-            mean, std = evaluate_agent(meta_agent, meta_env, args.n_eval_episodes)
+            mean, std = evaluate_agent(meta_agent, eval_meta_env, args.n_eval_episodes)
             print(f"Mean reward: {mean:.2f} +/- {std: .2f}")
+            writer.add_scalar("metric/eval_reward", mean, epoch)
 
             if (best_value is None) or (best_value < mean):
                 best_value = mean
