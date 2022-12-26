@@ -8,7 +8,7 @@ import datetime as dt
 def evaluate_agent(agent, envs, n_eval_episodes, device="cpu"):
 
     agent.eval()
-    envs.train(False)
+    # envs.train(False)
     episode_counts = np.zeros(envs.num_envs, dtype="int")
     # Divides episodes among different sub environments in the vector as evenly as possible
     episode_count_targets = np.array(
@@ -49,7 +49,7 @@ def evaluate_agent(agent, envs, n_eval_episodes, device="cpu"):
 
 def play_an_episode(agent, envs, device="cpu"):
     assert envs.num_envs == 1, "Only support Vector Env with single environment"
-    envs.train(False)
+    # envs.train(False)
     agent.eval()
     obs, reset_info = envs.reset()
 
