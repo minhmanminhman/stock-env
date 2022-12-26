@@ -20,14 +20,18 @@ logging.basicConfig(
     format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
 )
 global_step = 0
+# evaluate batch
+df = pd.read_csv("temp/evaluate_buffer.csv", index_col=0)
+evaluate_batch = df.loc[:, slice("0", df.columns[-1])].to_numpy()
+evaluate_batch = th.from_numpy(evaluate_batch).float()
 
 
 @th.no_grad()
 def _meta_collect_rollout(
+    args,
     agent,
     buffer,
     envs,
-    gamma,
     is_timeout=True,
     params=None,
     writer=None,
@@ -61,7 +65,7 @@ def _meta_collect_rollout(
                 final_value = agent.get_value(
                     th.Tensor(final_observation).to(device), params=params
                 )
-                rewards[idx] += gamma * final_value
+                rewards[idx] += args.gamma * final_value
 
             # logging
             if writer is not None:
@@ -74,11 +78,13 @@ def _meta_collect_rollout(
                     ]
                 )
                 epoch = globals()["epoch"]
-                if global_step % (envs.num_envs * buffer.num_steps * 3) == 0:
-                    logging.info(
-                        f"global_step={global_step}, episodic_return={mean_reward :.2f}, epoch={epoch}"
-                    )
-                writer.add_scalar("metric/train_reward", mean_reward, global_step)
+                logging.info(
+                    f"global_step={global_step}, episodic_return={mean_reward :.2f}, epoch={epoch}"
+                )
+                if agent.training:
+                    writer.add_scalar("metric/train_reward", mean_reward, global_step)
+                else:
+                    writer.add_scalar("metric/eval_reward", mean_reward, global_step)
 
         # add to buffer
         buffer.add(
@@ -100,16 +106,13 @@ def _meta_collect_rollout(
 
 
 def _compute_ppo_loss(
+    args,
     agent,
     buffer,
-    normalize_advantage=True,
-    clip_coef=0.2,
-    clip_range_vf=None,
-    ent_coef=0.01,
-    vf_coef=0.5,
     params=None,
+    writer=None,
 ):
-
+    pg_losses, vf_losses, ent_losses = [], [], []
     for rollout_data in buffer.get():
         _, values, log_prob, entropy = agent.get_action_and_value(
             rollout_data.obs, rollout_data.actions, params=params
@@ -117,7 +120,7 @@ def _compute_ppo_loss(
         values = values.flatten()
 
         advantages = rollout_data.advantages
-        if normalize_advantage:
+        if args.normalize_advantage:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         # ratio between old and new policy, should be one at the first iteration
@@ -126,19 +129,26 @@ def _compute_ppo_loss(
 
         # clipped surrogate loss
         policy_loss_1 = advantages * ratio
-        policy_loss_2 = advantages * th.clamp(ratio, 1 - clip_coef, 1 + clip_coef)
-        policy_loss = -th.min(policy_loss_1, policy_loss_2).mean()
+        policy_loss_2 = advantages * th.clamp(
+            ratio, 1 - args.clip_coef, 1 + args.clip_coef
+        )
+        min_policy = th.min(policy_loss_1, policy_loss_2)
+        policy_loss = -min_policy.mean()
+        pg_losses.append(policy_loss.item())
 
-        if clip_range_vf is None:
+        if args.clip_range_vf is None:
             # No clipping
             values_pred = values
         else:
             # Clip the difference between old and new value
             # NOTE: this depends on the reward scaling
             values_pred = rollout_data.values + th.clamp(
-                values - rollout_data.values, -clip_range_vf, clip_range_vf
+                values - rollout_data.values,
+                -args.clip_range_vf,
+                args.clip_range_vf,
             )
         value_loss = ((rollout_data.returns - values_pred) ** 2).mean()
+        vf_losses.append(value_loss.item())
 
         # Entropy loss favor exploration
         if entropy is None:
@@ -146,30 +156,52 @@ def _compute_ppo_loss(
             entropy_loss = -th.mean(-log_prob)
         else:
             entropy_loss = -th.mean(entropy)
+        ent_losses.append(entropy_loss.item())
 
-        loss = policy_loss + ent_coef * entropy_loss + vf_coef * value_loss
+        loss = policy_loss + args.ent_coef * entropy_loss + args.vf_coef * value_loss
+
+    # logging
+    if writer is not None:
+        if agent.training:
+            writer.add_scalar(
+                "inner_train/policy_loss", np.mean(pg_losses), global_step
+            )
+            writer.add_scalar("inner_train/value_loss", np.mean(vf_losses), global_step)
+            writer.add_scalar(
+                "inner_train/entropy_loss", np.mean(ent_losses), global_step
+            )
+        else:
+            writer.add_scalar("inner_eval/policy_loss", np.mean(pg_losses), global_step)
+            writer.add_scalar("inner_eval/value_loss", np.mean(vf_losses), global_step)
+            writer.add_scalar(
+                "inner_eval/entropy_loss", np.mean(ent_losses), global_step
+            )
+
+            # evaluate a sample batch
+            with th.no_grad():
+                agent.eval()
+                eval_values = agent.get_value(evaluate_batch, params=params)
+            eval_values = eval_values.flatten().cpu().numpy()
+            writer.add_scalar("metric/mean_value", np.mean(eval_values), global_step)
     return loss
 
 
 def get_task_loss(args, meta_agent, meta_env, buffer, params=None, writer=None):
     filled_buffer = _meta_collect_rollout(
+        args=args,
         agent=meta_agent,
         buffer=buffer,
         envs=meta_env,
-        gamma=args.gamma,
         params=params,
         writer=writer,
     )
 
     loss = _compute_ppo_loss(
+        args=args,
         agent=meta_agent,
         buffer=filled_buffer,
         params=params,
-        normalize_advantage=args.normalize_advantage,
-        clip_coef=args.clip_coef,
-        clip_range_vf=args.clip_range_vf,
-        ent_coef=args.ent_coef,
-        vf_coef=args.vf_coef,
+        writer=writer,
     )
     return loss
 
@@ -210,7 +242,14 @@ if __name__ == "__main__":
     with open("configs/maml.yaml") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
         args = config[env_id]
+
+        # calculate some params
+        batch_size = args["num_envs"] * args["num_steps"]
+        args["minibatch_size"] = batch_size // args["num_minibatches"]
+        args["epochs"] = args["total_timesteps"] // batch_size // args["num_tasks"]
+
         args = SimpleNamespace(**args)
+        logging.info(args)
 
     if args.run_name is None:
         run_name = f'maml_{env_id}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
@@ -230,14 +269,15 @@ if __name__ == "__main__":
         gamma=args.gamma,
         gae_lambda=args.gae_lambda,
     )
+
     meta_agent = MetaAgent(meta_env, hiddens=args.hiddens).to(device)
     meta_optimizer = th.optim.Adam(meta_agent.parameters(), lr=args.outer_lr)
     scheduler = th.optim.lr_scheduler.StepLR(
         meta_optimizer, step_size=args.epochs // 2, gamma=0.8
     )
-    ent_coef_scheduler = get_linear_fn(
-        start=args.ent_coef, end=args.ent_coef_final, end_fraction=0.3
-    )
+    # ent_coef_scheduler = get_linear_fn(
+    #     start=args.ent_coef, end=args.ent_coef_final, end_fraction=0.3
+    # )
     logging.info(meta_agent)
     writer = SummaryWriter(f"log/{run_name}")
 
@@ -269,7 +309,10 @@ if __name__ == "__main__":
 
                 # validation
                 meta_env.train(False)
-                valid_loss = get_task_loss(args, meta_agent, meta_env, buffer, params)
+                meta_agent.eval()
+                valid_loss = get_task_loss(
+                    args, meta_agent, meta_env, buffer, params, writer=writer
+                )
 
                 outer_loss += valid_loss
 
@@ -277,18 +320,25 @@ if __name__ == "__main__":
 
             meta_optimizer.zero_grad()
             outer_loss.backward()
+            # get the gradient norm
+            total_norm = th.nn.utils.clip_grad_norm_(meta_agent.parameters(), 100)
             meta_optimizer.step()
             scheduler.step()
-            args.ent_coef = ent_coef_scheduler(1 - epoch / args.epochs)
+            # args.ent_coef = ent_coef_scheduler(1 - epoch / args.epochs)
 
             # MISC JOBS
             # logging
-            writer.add_scalar("train/outer_loss", outer_loss.item(), epoch)
+            writer.add_scalar("outer_train/outer_loss", outer_loss.item(), epoch)
             writer.add_scalar(
-                "train/mean_inner_loss_over_tasks", np.mean(task_inner_losses), epoch
+                "outer_train/mean_inner_loss_over_tasks",
+                np.mean(task_inner_losses),
+                epoch,
             )
-            writer.add_scalar("train/lr", meta_optimizer.param_groups[0]["lr"], epoch)
-            writer.add_scalar("train/ent_coef", args.ent_coef, epoch)
+            writer.add_scalar(
+                "outer_train/lr", meta_optimizer.param_groups[0]["lr"], epoch
+            )
+            writer.add_scalar("outer_train/ent_coef", args.ent_coef, epoch)
+            writer.add_scalar("outer_train/total_norm", total_norm.item(), epoch)
 
             # Save best model
             eval_tasks = eval_meta_env.sample_task(eval_meta_env.num_envs)
@@ -297,7 +347,7 @@ if __name__ == "__main__":
 
             mean, std = evaluate_agent(meta_agent, eval_meta_env, args.n_eval_episodes)
             print(f"Mean reward: {mean:.2f} +/- {std: .2f}")
-            writer.add_scalar("metric/eval_reward", mean, epoch)
+            writer.add_scalar("metric/test_reward", mean, epoch)
 
             if (best_value is None) or (best_value < mean):
                 best_value = mean
