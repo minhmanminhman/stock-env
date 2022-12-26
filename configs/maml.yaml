@@ -1,19 +1,20 @@
 SP500-v0:
-  num_envs: 5
+  num_envs: 4
   num_tasks: 20
   num_steps: 250
   n_adapt_steps: 1
-  n_eval_episodes: 20
-  epochs: 20
+  n_eval_episodes: 5
+  total_timesteps: 2_000_000
+  num_minibatches: 32
+  save_freq: 5
   gamma: 0.99
-  gae_lambda: 0.9
-  outer_lr: 0.01
-  inner_lr: 0.1
-  clip_coef: 0.1
-  clip_range_vf: 0.1
+  gae_lambda: 0.95
+  outer_lr: !!float 3e-4
+  inner_lr: !!float 3e-3
+  clip_coef: 0.2
+  clip_range_vf: 0.2
   vf_coef: 0.5
-  ent_coef: 0.1
-  ent_coef_final: 0.02
+  ent_coef: 0.01
   max_grad_norm: 10
   normalize_advantage: True
   target_kl: null
@@ -21,19 +22,20 @@ SP500-v0:
   hiddens: [200, 200, 200, 100, 50]
 
 VNALL-v0:
-  num_envs: 5
+  num_envs: 4
   num_tasks: 10
   num_steps: 250
   n_adapt_steps: 1
-  n_gradient_steps: 3
   n_eval_episodes: 20
-  epochs: 100
+  total_timesteps: 20000
+  num_minibatches: 32
+  save_freq: 5
   gamma: 0.99
-  gae_lambda: 0.9
-  outer_lr: 0.01
-  inner_lr: 0.1
-  clip_coef: 0.1
-  clip_range_vf: 0.1
+  gae_lambda: 0.95
+  outer_lr: !!float 3e-4
+  inner_lr: !!float 3e-3
+  clip_coef: 0.2
+  clip_range_vf: 0.2
   vf_coef: 0.5
   ent_coef: 0.01
   max_grad_norm: 10
@@ -43,17 +45,18 @@ VNALL-v0:
   hiddens: [200, 200, 200, 100, 50]
 
 MiniFAANG-v0:
-  num_envs: 5
-  num_tasks: 5
+  num_envs: 2
+  num_tasks: 2
   num_steps: 50
   n_adapt_steps: 1
-  n_gradient_steps: 1
   n_eval_episodes: 5
-  epochs: 5
+  total_timesteps: 20000
+  num_minibatches: 32
+  save_freq: 5
   gamma: 0.99
-  gae_lambda: 0.9
-  outer_lr: !!float 1e-3
-  inner_lr: 0.4
+  gae_lambda: 0.95
+  outer_lr: !!float 3e-4
+  inner_lr: !!float 3e-3
   clip_coef: 0.2
   clip_range_vf: 0.2
   vf_coef: 0.19
@@ -62,24 +65,27 @@ MiniFAANG-v0:
   normalize_advantage: True
   target_kl: null
   run_name: null
+  hiddens: [4, 4]
 
 MiniVNStock-v0:
-  num_envs: 5
-  num_tasks: 5
+  num_envs: 2
+  num_tasks: 2
   num_steps: 50
   n_adapt_steps: 1
-  n_gradient_steps: 1
   n_eval_episodes: 5
-  epochs: 5
+  total_timesteps: 20000
+  num_minibatches: 32
+  save_freq: 5
   gamma: 0.99
-  gae_lambda: 0.9
-  outer_lr: !!float 1e-3
-  inner_lr: 0.4
+  gae_lambda: 0.95
+  outer_lr: !!float 3e-4
+  inner_lr: !!float 3e-3
   clip_coef: 0.2
   clip_range_vf: 0.2
-  vf_coef: 0.19
-  ent_coef: 0.02
-  max_grad_norm: 5
+  vf_coef: 0.5
+  ent_coef: 0.01
+  max_grad_norm: 10
   normalize_advantage: True
   target_kl: null
   run_name: null
+  hiddens: [4, 4]
