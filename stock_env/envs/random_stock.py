@@ -169,38 +169,19 @@ class RandomStockEnv(BaseVietnamStockEnv):
         # compare with holding
         cum_return_from_holding = (self.close_price / self.start_close_price) - 1
         diff = cum_return - cum_return_from_holding
+
         returns = pd.Series(self.history["portfolio_value"][-50:]).pct_change()
         max_dd = np.abs(max_drawdown(returns))
         max_dd = max_dd if not np.isnan(max_dd) else 0.0
 
-        # method 1
-        # reward = diff / self.n_steps
-
-        # method 2
-        # if cum_return > 0.0:  # make profit
-        #     if diff > 0.0:  # win buy-and-hold
-        #         reward = 10
-        #     else:
-        #         reward = 3
-        # else:  # loss
-        #     if diff > 0.0:  # loss less than buy-and-hold
-        #         reward = -1
-        #     else:
-        #         reward = -10
-
-        # if max_dd >= 0.2:
-        #     reward -= 0.2
-        # elif max_dd >= 0.1:
-        #     reward -= 0.1
-
-        # method 3
-        if max_dd >= 0.2:
-            dd_penalty = 0.02
-        elif max_dd >= 0.1:
-            dd_penalty = 0.01
+        last_pv = self.history["portfolio_value"][-5:]
+        if len(last_pv) == 0:
+            last_pv = self.init_cash
         else:
-            dd_penalty = 0
-        reward = cum_return + 0.5 * diff - (dd_penalty / self.n_steps)
+            last_pv = last_pv[0]
+        bonus_reward = self.portfolio_value / last_pv - 1
+
+        reward = cum_return + 0.5 * (diff + bonus_reward)
         return reward
 
     def get_history(self):
