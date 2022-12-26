@@ -86,8 +86,8 @@ class RolloutBuffer:
         while start_idx < self.num_steps:
             _indices = indices[start_idx : start_idx + batch_size]
             yield self.RolloutBufferSamples(
-                obs=self.obs[_indices],
-                actions=self.actions[_indices],
+                obs=self.obs[_indices].reshape((-1,) + self.obs_dim),
+                actions=self.actions[_indices].reshape((-1,) + self.action_dim),
                 values=self.values[_indices].flatten(),
                 logprobs=self.logprobs[_indices].flatten(),
                 advantages=self.advantages[_indices].flatten(),
