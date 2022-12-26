@@ -105,7 +105,12 @@ class MetaAgent(MetaModule):
 
     def get_action_and_value(self, x, action=None, params=None):
         action_mean = self.actor_mean(x, params=self.get_subdict(params, "actor_mean"))
-        action_logstd = self.actor_logstd.expand_as(action_mean)
+
+        if params is None:
+            action_logstd = self.actor_logstd.expand_as(action_mean)
+        else:
+            action_logstd = params["actor_logstd"].expand_as(action_mean)
+
         action_std = th.exp(action_logstd)
         probs = Normal(action_mean, action_std)
 
@@ -116,7 +121,12 @@ class MetaAgent(MetaModule):
 
     def get_action(self, x, params=None, deterministic=False):
         action_mean = self.actor_mean(x, params=self.get_subdict(params, "actor_mean"))
-        action_logstd = self.actor_logstd.expand_as(action_mean)
+
+        if params is None:
+            action_logstd = self.actor_logstd.expand_as(action_mean)
+        else:
+            action_logstd = params["actor_logstd"].expand_as(action_mean)
+
         action_std = th.exp(action_logstd)
         distribution = Normal(action_mean, action_std)
 
