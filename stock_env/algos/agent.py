@@ -57,8 +57,8 @@ class Agent(nn.Module):
         return (
             action,
             self.critic(x),
-            probs.log_prob(action).view(-1),
-            probs.entropy().view(-1),
+            probs.log_prob(action).sum(1),
+            probs.entropy().sum(1),
         )
 
     def get_action(self, x, deterministic=False):
@@ -117,7 +117,9 @@ class MetaAgent(MetaModule):
         if action is None:
             action = probs.sample()
         value = self.critic(x, params=self.get_subdict(params, "critic"))
-        return action, value, probs.log_prob(action).view(-1), probs.entropy().view(-1)
+        logprob = probs.log_prob(action)
+        entropy = probs.entropy()
+        return action, value, logprob.sum(1), entropy.sum(1)
 
     def get_action(self, x, params=None, deterministic=False):
         action_mean = self.actor_mean(x, params=self.get_subdict(params, "actor_mean"))
