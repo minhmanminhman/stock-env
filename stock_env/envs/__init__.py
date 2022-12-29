@@ -4,6 +4,7 @@ from stock_env.envs.task_stock import *
 from stock_env.envs.vec_task_env import *
 from stock_env.wrappers import StackAndSkipObs
 from stock_env.common.common_utils import open_config
+from stock_env.envs.half_cheetah import *
 from gymnasium import register
 import pathlib
 

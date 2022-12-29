@@ -1,8 +1,8 @@
-from typing import Tuple, Union
-from typing import Union
+from typing import Tuple, Union, List, Dict, Any, Optional, Type, Callable
 import numpy as np
 import torch as th
-from gym import spaces
+from gymnasium import spaces
+import gymnasium as gym
 
 
 def get_obs_shape(observation_space: spaces.Space) -> Tuple[int, ...]:
@@ -67,3 +67,56 @@ def get_device(device: Union[th.device, str] = "auto") -> th.device:
         return th.device("cpu")
 
     return device
+
+
+def unwrap_wrapper(
+    env: gym.Env, wrapper_class: Type[gym.Wrapper]
+) -> Optional[gym.Wrapper]:
+    """
+    Retrieve a ``VecEnvWrapper`` object by recursively searching.
+
+    :param env: Environment to unwrap
+    :param wrapper_class: Wrapper to look for
+    :return: Environment unwrapped till ``wrapper_class`` if it has been wrapped with it
+    """
+    env_tmp = env
+    while isinstance(env_tmp, gym.Wrapper):
+        if isinstance(env_tmp, wrapper_class):
+            return env_tmp
+        env_tmp = env_tmp.env
+    return None
+
+
+def is_wrapped(env: Type[gym.Env], wrapper_class: Type[gym.Wrapper]) -> bool:
+    """
+    Check if a given environment has been wrapped with a given wrapper.
+
+    :param env: Environment to check
+    :param wrapper_class: Wrapper class to look for
+    :return: True if environment has been wrapped with ``wrapper_class``.
+    """
+    return unwrap_wrapper(env, wrapper_class) is not None
+
+
+def make_wrapped_env(name, gamma=0.99):
+    def _thunk():
+        env = gym.make(name)
+        if not is_wrapped(env, gym.wrappers.RecordEpisodeStatistics):
+            env = gym.wrappers.RecordEpisodeStatistics(env)
+        if not is_wrapped(env, gym.wrappers.ClipAction):
+            env = gym.wrappers.ClipAction(env)
+        if not is_wrapped(env, gym.wrappers.NormalizeObservation):
+            env = gym.wrappers.NormalizeObservation(env)
+        if not is_wrapped(env, gym.wrappers.TransformObservation):
+            env = gym.wrappers.TransformObservation(
+                env, lambda obs: np.clip(obs, -10, 10)
+            )
+        if not is_wrapped(env, gym.wrappers.NormalizeReward):
+            env = gym.wrappers.NormalizeReward(env, gamma=gamma)
+        if not is_wrapped(env, gym.wrappers.TransformReward):
+            env = gym.wrappers.TransformReward(
+                env, lambda reward: np.clip(reward, -10, 10)
+            )
+        return env
+
+    return _thunk

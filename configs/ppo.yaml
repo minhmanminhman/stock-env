@@ -1,18 +1,19 @@
 MountainCarContinuous-v0:
-  num_envs: 1
-  num_steps: 2048
-  total_timesteps: 100000
+  num_envs: 5
+  num_steps: 512
+  total_timesteps: 200000
   n_eval_episodes: 5
-  num_minibatches: 32
-  gradient_steps: 10
+  minibatch_size: 64
+  gradient_steps: 3
   gamma: 0.99
   gae_lambda: 0.95
-  learning_rate: !!float 3e-4
+  learning_rate: !!float 1e-3
   is_timeout: False
+  evaluate_freq: null
   clip_coef: 0.2
   clip_range_vf: 0.2
   vf_coef: 0.5
-  ent_coef: 0.1
+  ent_coef: 0.01
   max_grad_norm: 10
   normalize_advantage: True
   target_kl: null
@@ -21,20 +22,21 @@ MountainCarContinuous-v0:
 
 HalfCheetahDir-v0:
   num_envs: 4
-  num_steps: 200
+  num_steps: 100
   total_timesteps: 100000
   n_eval_episodes: 5
-  num_minibatches: 32
-  gradient_steps: 10
+  minibatch_size: 64
+  gradient_steps: 3
   gamma: 0.99
   gae_lambda: 0.95
   learning_rate: !!float 3e-4
   is_timeout: False
+  evaluate_freq: null
   clip_coef: 0.2
   clip_range_vf: 0.2
   vf_coef: 0.5
   ent_coef: 0.01
-  max_grad_norm: 10
+  max_grad_norm: 5
   normalize_advantage: True
   target_kl: null
   run_name: 'halfcheetah'

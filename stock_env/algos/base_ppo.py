@@ -1,0 +1,171 @@
+import logging
+import datetime as dt
+import numpy as np
+from abc import ABC, abstractmethod
+
+import torch as th
+from torch.utils.tensorboard import SummaryWriter
+
+from stock_env.algos.buffer import RolloutBuffer
+from stock_env.common.env_utils import get_device
+
+logging.basicConfig(
+    format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
+)
+
+
+class BasePPO(ABC):
+    def __init__(self, args, envs, agent):
+        self.args = args
+        self.envs = envs
+        self.agent = agent
+        self.device = get_device()
+        self.buffer = RolloutBuffer(
+            num_steps=self.args.num_steps,
+            envs=self.envs,
+            device=self.device,
+            gamma=self.args.gamma,
+            gae_lambda=self.args.gae_lambda,
+        )
+        if self.args.run_name is None:
+            env_id = envs.envs[0].spec.id
+            self.run_name = (
+                f'ppo_{env_id}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
+            )
+        else:
+            self.run_name = f'ppo_{self.args.run_name}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        self.log_path = f"log/{self.run_name}"
+        self.model_path = f"model/{self.run_name}.pth"
+        self.writer = SummaryWriter(self.log_path)
+        self.logger = logging.getLogger(__name__)
+        self.global_step = 0
+
+    @abstractmethod
+    def learn(self, *arg, **kwargs):
+        raise NotImplementedError
+
+    @abstractmethod
+    def _train(self, *arg, **kwargs):
+        raise NotImplementedError
+
+    def close(self):
+        self.envs.close()
+        self.writer.close()
+
+    def _env_reset(self):
+        self._obs, self._infos = self.envs.reset()
+        self._dones = th.zeros((self.args.num_envs,))
+        self._obs = th.Tensor(self._obs).to(self.device)
+
+    def _collect_rollout(self, agent, callback):
+        assert self._obs is not None, "Please call '_train_setup' first"
+
+        self.buffer.reset()
+        for step in range(self.buffer.num_steps):
+            self.global_step += 1 * self.args.num_envs
+            with th.no_grad():
+                actions, values, log_probs, _ = agent.get_action_and_value(self._obs)
+                values = values.flatten()
+
+            (
+                next_obs,
+                rewards,
+                next_terminated,
+                next_truncated,
+                next_infos,
+            ) = self.envs.step(actions.cpu().numpy())
+            next_obs = th.Tensor(next_obs).to(self.device)
+            rewards = th.Tensor(rewards).to(self.device).flatten()
+            next_dones = np.logical_or(next_terminated, next_truncated)
+            next_dones = th.Tensor(next_dones).to(self.device).flatten()
+
+            if any(next_dones):
+                # find which envs are done
+                idx = np.where(next_dones)[0]
+                # Handle timeout by bootstraping with value function
+                # NOTES: for timeout env
+                if self.args.is_timeout:
+                    final_observation = next_infos["final_observation"][idx][0]
+                    # calculated value of final observation
+                    with th.no_grad():
+                        final_value = agent.get_value(
+                            th.Tensor(final_observation).to(self.device)
+                        )
+                    rewards[idx] += self.args.gamma * final_value
+
+                # logging
+                final_infos = next_infos["final_info"][idx]
+                mean_reward = np.mean(
+                    [
+                        info["episode"]["r"]
+                        for info in final_infos
+                        if "episode" in info.keys()
+                    ]
+                )
+                callback.update_locals(locals())
+                callback.on_dones()
+
+            # add to buffer
+            self.buffer.add(
+                index=step,
+                obs=self._obs,
+                actions=actions,
+                logprobs=log_probs,
+                rewards=rewards,
+                dones=self._dones,
+                values=values,
+            )
+            self._obs = next_obs
+            self._dones = next_dones
+
+        # compute returns
+        with th.no_grad():
+            next_value = agent.get_value(next_obs)
+            next_value = next_value.flatten()
+            self.buffer.compute_returns(next_value, next_dones)
+
+    def _ppo_loss(self, agent, rollout_data):
+        _, values, log_prob, entropy = agent.get_action_and_value(
+            rollout_data.obs, rollout_data.actions
+        )
+        values = values.flatten()
+
+        # Normalize advantage
+        advantages = rollout_data.advantages
+        if self.args.normalize_advantage:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+        # ratio between old and new policy, should be one at the first iteration
+        log_ratio = log_prob - rollout_data.logprobs
+        ratio = log_ratio.exp()
+
+        # clipped surrogate loss
+        policy_loss_1 = advantages * ratio
+        policy_loss_2 = advantages * th.clamp(
+            ratio, 1 - self.args.clip_coef, 1 + self.args.clip_coef
+        )
+        policy_loss = -th.min(policy_loss_1, policy_loss_2).mean()
+
+        if self.args.clip_range_vf is None:
+            # No clipping
+            values_pred = values
+        else:
+            # Clip the difference between old and new value
+            # NOTE: this depends on the reward scaling
+            values_pred = rollout_data.values + th.clamp(
+                values - rollout_data.values,
+                -self.args.clip_range_vf,
+                self.args.clip_range_vf,
+            )
+
+        # Value loss using the TD(gae_lambda) target
+        value_loss = ((rollout_data.returns - values_pred) ** 2).mean()
+
+        # Entropy loss favor exploration
+        if entropy is None:
+            # Approximate entropy when no analytical form
+            entropy_loss = -th.mean(-log_prob)
+        else:
+            entropy_loss = -th.mean(entropy)
+
+        return policy_loss, value_loss, entropy_loss
