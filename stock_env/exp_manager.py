@@ -55,7 +55,7 @@ class ExperimentManager:
         self._parse_meta_params()
 
     def _make_envs(self, env_id, num_envs):
-        return MetaVectorEnv([lambda: gym.make(env_id) for _ in range(num_envs)])
+        return MetaVectorStockEnv([lambda: gym.make(env_id) for _ in range(num_envs)])
 
     def _parse_meta_params(self):
         self.meta_params = {}
@@ -146,10 +146,11 @@ class ExperimentManager:
         total_adapt_steps: int = 5,
     ) -> None:
 
-        envs = self._make_envs(env_id=self.env_id, num_envs=1)
+        eval_env = self._make_envs(env_id=self.env_id, num_envs=1)
+        eval_env.train(False)
         if type(maybe_num_tasks) == int:
             num_tasks = maybe_num_tasks
-            tasks = envs.sample_task(num_tasks)
+            tasks = self.envs.sample_task(num_tasks)
         elif type(maybe_num_tasks) == list:
             tasks = maybe_num_tasks
 
@@ -177,7 +178,8 @@ class ExperimentManager:
         for method in methods:
             output_params[method] = {}
             for task in tasks:
-                envs.reset_task(task)
+                self.envs.reset_task(task)
+                eval_env.reset_task(task)
                 agent = deepcopy(self.init_agent)
                 agent.load_state_dict(self.meta_params[method])
                 l_params = []
@@ -194,7 +196,9 @@ class ExperimentManager:
                     l_params.append(params)
                     agent.load_state_dict(params)
 
-                    info = play_an_episode(agent=agent, envs=envs, device=self.device)
+                    info = play_an_episode(
+                        agent=agent, envs=eval_env, device=self.device
+                    )
                     df = info["final_info"][0]["final_history"]
                     returns = df.set_index("time")["portfolio_value"].pct_change()
                     perf = create_performance(returns, plot=False)
