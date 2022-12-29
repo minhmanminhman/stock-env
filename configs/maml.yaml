@@ -1,22 +1,25 @@
 SP500-v0:
-  num_envs: 4
-  num_tasks: 20
+  num_envs: 10
+  num_tasks: 10
   num_steps: 250
   n_adapt_steps: 1
-  n_eval_episodes: 5
-  total_timesteps: 2_000_000
-  num_minibatches: 32
+  n_eval_episodes: 10
+  epochs: 5
+  minibatch_size: 32
   save_freq: 5
   gamma: 0.99
   gae_lambda: 0.95
-  outer_lr: !!float 3e-4
-  inner_lr: !!float 3e-3
+  # outer_lr: !!float 3e-5
+  # inner_lr: !!float 7e-4
+  inner_lr_hat: !!float -3
+  outer_lr_hat: !!float -4
   clip_coef: 0.2
   clip_range_vf: 0.2
   vf_coef: 0.5
   ent_coef: 0.01
-  max_grad_norm: 10
+  max_grad_norm: 0.5
   normalize_advantage: True
+  is_timeout: True
   target_kl: null
   run_name: 'sp500'
   hiddens: [200, 200, 200, 100, 50]
@@ -28,12 +31,12 @@ VNALL-v0:
   n_adapt_steps: 1
   n_eval_episodes: 20
   total_timesteps: 20000
-  num_minibatches: 32
+  minibatch_size: 32
   save_freq: 5
   gamma: 0.99
   gae_lambda: 0.95
-  outer_lr: !!float 3e-4
-  inner_lr: !!float 3e-3
+  outer_lr: !!float 3e-5
+  inner_lr: !!float 7e-4
   clip_coef: 0.2
   clip_range_vf: 0.2
   vf_coef: 0.5
@@ -89,3 +92,28 @@ MiniVNStock-v0:
   target_kl: null
   run_name: null
   hiddens: [4, 4]
+
+HalfCheetahDir-v0:
+  num_envs: 20
+  num_tasks: 40
+  num_steps: 300
+  minibatch_size: 64
+  n_adapt_steps: 1
+  n_eval_episodes: 20
+  epochs: 100
+  save_freq: 5
+  gamma: 0.99
+  gae_lambda: 0.92
+  # outer_lr: !!float 3e-5
+  # inner_lr: !!float 3e-4
+  inner_lr_hat: !!float -1
+  outer_lr_hat: !!float -2
+  clip_coef: 0.2
+  clip_range_vf: 0.2
+  vf_coef: 0.58
+  ent_coef: 0.001
+  max_grad_norm: 0.5
+  normalize_advantage: True
+  target_kl: null
+  run_name: 'halfcheetahdir'
+  hiddens: [64, 64]
