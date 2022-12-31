@@ -1,3 +1,14 @@
+common-variables: &common-variables
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_coef: 0.2
+  clip_range_vf: 0.2
+  vf_coef: 0.5
+  ent_coef: 0.01
+  max_grad_norm: 5
+  normalize_advantage: True
+  target_kl: null
+
 MountainCarContinuous-v0:
   num_envs: 5
   num_steps: 512
@@ -5,20 +16,12 @@ MountainCarContinuous-v0:
   n_eval_episodes: 5
   minibatch_size: 64
   gradient_steps: 3
-  gamma: 0.99
-  gae_lambda: 0.95
   learning_rate: !!float 1e-3
   is_timeout: False
   evaluate_freq: null
-  clip_coef: 0.2
-  clip_range_vf: 0.2
-  vf_coef: 0.5
-  ent_coef: 0.01
-  max_grad_norm: 10
-  normalize_advantage: True
-  target_kl: null
   run_name: 'car'
   hiddens: [64, 64]
+  <<: *common-variables
 
 HalfCheetahDir-v0:
   num_envs: 4
@@ -27,17 +30,24 @@ HalfCheetahDir-v0:
   n_eval_episodes: 5
   minibatch_size: 64
   gradient_steps: 3
-  gamma: 0.99
-  gae_lambda: 0.95
   learning_rate: !!float 3e-4
   is_timeout: False
   evaluate_freq: null
-  clip_coef: 0.2
-  clip_range_vf: 0.2
-  vf_coef: 0.5
-  ent_coef: 0.01
-  max_grad_norm: 5
-  normalize_advantage: True
-  target_kl: null
   run_name: 'halfcheetah'
   hiddens: [64, 64]
+  <<: *common-variables
+
+SP500-v0:
+  num_envs: 10
+  num_steps: 250
+  total_timesteps: 1000000
+  n_eval_episodes: 20
+  minibatch_size: 64
+  gradient_steps: 3
+  learning_rate: !!float 3e-4
+  is_timeout: True
+  evaluate_freq: 5
+  run_name: 'AAPL'
+  task: 'AAPL'
+  hiddens: [200, 200, 200, 100, 50]
+  <<: *common-variables
