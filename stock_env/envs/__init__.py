@@ -2,7 +2,7 @@ from .base_env import *
 from .random_stock import *
 from stock_env.envs.task_stock import *
 from stock_env.envs.vec_task_env import *
-from stock_env.wrappers import StackAndSkipObs
+from stock_env.wrappers import StackAndSkipObs, DiscretizeAction
 from stock_env.common.common_utils import open_config
 from stock_env.envs.half_cheetah import *
 from gymnasium import register
@@ -26,7 +26,7 @@ def make_task_env(name, gamma=0.99, env_kwargs={}):
         env.reset_task(_task)
 
         # wrap env
-        env = StackAndSkipObs(env, num_stack=5, num_skip=1)
+        env = StackAndSkipObs(env, num_stack=5, num_skip=3)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
         env = gym.wrappers.NormalizeObservation(env)

@@ -13,7 +13,7 @@ from stock_env.common.common_utils import (
     open_config,
     create_performance,
 )
-from stock_env.algos.maml import adapt
+from stock_env.algos.fomaml import adapt
 from stock_env.algos.buffer import RolloutBuffer
 
 logging.basicConfig(

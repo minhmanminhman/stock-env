@@ -3,6 +3,7 @@ import numpy as np
 import torch as th
 from gymnasium import spaces
 import gymnasium as gym
+from stock_env.envs.vec_task_env import MetaVectorEnv, MetaVectorStockEnv
 
 
 def get_obs_shape(observation_space: spaces.Space) -> Tuple[int, ...]:
@@ -98,25 +99,48 @@ def is_wrapped(env: Type[gym.Env], wrapper_class: Type[gym.Wrapper]) -> bool:
     return unwrap_wrapper(env, wrapper_class) is not None
 
 
-def make_wrapped_env(name, gamma=0.99):
+def make_wrapped_env(name, gamma=0.99, normalize=True):
     def _thunk():
         env = gym.make(name)
+
         if not is_wrapped(env, gym.wrappers.RecordEpisodeStatistics):
             env = gym.wrappers.RecordEpisodeStatistics(env)
+
         if not is_wrapped(env, gym.wrappers.ClipAction):
             env = gym.wrappers.ClipAction(env)
-        if not is_wrapped(env, gym.wrappers.NormalizeObservation):
-            env = gym.wrappers.NormalizeObservation(env)
-        if not is_wrapped(env, gym.wrappers.TransformObservation):
-            env = gym.wrappers.TransformObservation(
-                env, lambda obs: np.clip(obs, -10, 10)
-            )
-        if not is_wrapped(env, gym.wrappers.NormalizeReward):
-            env = gym.wrappers.NormalizeReward(env, gamma=gamma)
-        if not is_wrapped(env, gym.wrappers.TransformReward):
-            env = gym.wrappers.TransformReward(
-                env, lambda reward: np.clip(reward, -10, 10)
-            )
+
+        if normalize:
+            if not is_wrapped(env, gym.wrappers.NormalizeObservation):
+                env = gym.wrappers.NormalizeObservation(env)
+
+            if not is_wrapped(env, gym.wrappers.TransformObservation):
+                env = gym.wrappers.TransformObservation(
+                    env, lambda obs: np.clip(obs, -10, 10)
+                )
+            if not is_wrapped(env, gym.wrappers.NormalizeReward):
+                env = gym.wrappers.NormalizeReward(env, gamma=gamma)
+
+            if not is_wrapped(env, gym.wrappers.TransformReward):
+                env = gym.wrappers.TransformReward(
+                    env, lambda reward: np.clip(reward, -10, 10)
+                )
         return env
 
     return _thunk
+
+
+def make_vec_env(env_id, num_envs, task=None):
+
+    envs_fns = [make_wrapped_env(env_id) for _ in range(num_envs)]
+    if (
+        env_id.startswith("SP500")
+        or env_id.startswith("VNALL")
+        or env_id.startswith("Mini")
+    ):
+        envs = MetaVectorStockEnv(envs_fns)
+    else:
+        envs = MetaVectorEnv(envs_fns)
+
+    if task:
+        envs.reset_task(task)
+    return envs

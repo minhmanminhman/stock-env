@@ -2,7 +2,7 @@ from abc import abstractmethod
 import numpy as np
 import gymnasium as gym
 from gymnasium.utils import seeding
-from typing import Tuple
+from typing import Tuple, Type
 from dataclasses import dataclass
 
 from ..data_loader import BaseDataLoader
@@ -43,7 +43,7 @@ class BaseVietnamStockEnv(gym.Env):
 
     def __init__(
         self,
-        data_loader: BaseDataLoader,
+        data_loader: Type[BaseDataLoader],
         init_cash: float = 2e4,
         random_seed: int = None,
     ):

@@ -5,8 +5,8 @@ import yfinance
 from .base import BaseDataLoader
 from ..feature import BaseFeaturesExtractor
 from stock_env.common.common_utils import check_col
+from typing import Type
 
-# import vnquant.data as vqdt
 from stock_env.data_loader.vndirect_loader import VNDDataLoader
 
 
@@ -15,7 +15,7 @@ class RandomStockLoader(BaseDataLoader):
         self,
         tickers: list,
         data_folder_path: str,
-        feature_extractor: BaseFeaturesExtractor,
+        feature_extractor: Type[BaseFeaturesExtractor],
         max_episode_steps: int = 250,
     ):
         self.tickers = tickers
@@ -131,7 +131,7 @@ class USStockLoader(RandomStockLoader):
     def __init__(
         self,
         tickers: list,
-        feature_extractor: BaseFeaturesExtractor,
+        feature_extractor: Type[BaseFeaturesExtractor],
         max_episode_steps: int = 250,
         data_period: str = "1y",
     ):
@@ -175,7 +175,7 @@ class VNStockLoader(RandomStockLoader):
     def __init__(
         self,
         tickers: list,
-        feature_extractor: BaseFeaturesExtractor,
+        feature_extractor: Type[BaseFeaturesExtractor],
         max_episode_steps: int = 250,
         start_date: str = "2016-01-01",
         end_date: str = "2022-12-31",

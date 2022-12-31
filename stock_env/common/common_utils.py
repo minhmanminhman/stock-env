@@ -92,18 +92,17 @@ def create_performance(returns: pd.Series, plot=True):
     for func, result in zip(l_func, l_results):
         results.update({str(func.__name__): result})
 
+    print(
+        f"""
+    Annual return     : {results['annual_return'] * 100: .2f}%
+    Cumulative return : {results['cum_returns_final'] * 100: .2f}%
+    Sharpe ratio      : {results['sharpe_ratio']: .2f}
+    Maximum Drawdown  : {results['max_drawdown'] * 100: .2f}%
+    Annual Volatility : {results['annual_volatility'] * 100: .2f}%
+    Value-At-Risk     : {results['value_at_risk'] * 100: .2f}%
+    """
+    )
     if plot:
-        print(
-            f"""
-        Annual return     : {results['annual_return'] * 100: .2f}%
-        Cumulative return : {results['cum_returns_final'] * 100: .2f}%
-        Sharpe ratio      : {results['sharpe_ratio']: .2f}
-        Maximum Drawdown  : {results['max_drawdown'] * 100: .2f}%
-        Annual Volatility : {results['annual_volatility'] * 100: .2f}%
-        Value-At-Risk     : {results['value_at_risk'] * 100: .2f}%
-        """
-        )
-
         fig, axs = plt.subplots(3, 1, figsize=(12, 10))
         fig.suptitle("Trading performance")
         plot_rolling_returns(returns, ax=axs[0])
