@@ -1,16 +1,36 @@
+import datetime as dt
+import logging
+
 import torch as th
 import torch.optim as optim
+from torch.utils.tensorboard import SummaryWriter
 
 from stock_env.algos.base_ppo import BasePPO
 from stock_env.algos.utils import explained_variance
 from stock_env.algos.callback import PPOLogCallback
 from stock_env.common.evaluation import evaluate_agent
 
+logging.basicConfig(
+    format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
+)
+
 
 class PPO(BasePPO):
     def __init__(self, args, envs, agent):
         super().__init__(args, envs, agent)
         self.optimizer = optim.Adam(self.agent.parameters(), lr=self.args.learning_rate)
+
+        if self.args.run_name is None:
+            env_id = envs.envs[0].spec.id
+            self.run_name = (
+                f'ppo_{env_id}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
+            )
+        else:
+            self.run_name = f'ppo_{self.args.run_name}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        self.log_path = f"log/{self.run_name}"
+        self.model_path = f"model/{self.run_name}.pth"
+        self.writer = SummaryWriter(self.log_path)
+        self.logger = logging.getLogger(__name__)
         self.callback = PPOLogCallback()
         self.callback.init_callback(self.logger, self.writer)
 
@@ -18,7 +38,12 @@ class PPO(BasePPO):
         self.best_value = None
         self.save_model = True
 
-    def _train(self):
+    def close(self):
+        self.envs.close()
+        self.writer.close()
+        del self
+
+    def _train(self, callback=None):
 
         pg_losses, value_losses, entropy_losses = [], [], []
         for _ in range(self.args.gradient_steps):
@@ -49,8 +74,9 @@ class PPO(BasePPO):
             y_true=self.buffer.returns.flatten().cpu().numpy(),
         )
 
-        self.callback.update_locals(locals())
-        self.callback.on_train()
+        if callback is not None:
+            callback.update_locals(locals(), globals())
+            callback.on_train()
 
     def _evaluate(self):
         self.agent.eval()
@@ -71,7 +97,7 @@ class PPO(BasePPO):
             self.agent.train()
             self.envs.train()
             self._collect_rollout(agent=self.agent, callback=self.callback)
-            self._train()
+            self._train(callback=self.callback)
 
             # Save best model
             if (

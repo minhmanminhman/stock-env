@@ -1,17 +1,9 @@
-import logging
-import datetime as dt
 import numpy as np
 from abc import ABC, abstractmethod
 
 import torch as th
-from torch.utils.tensorboard import SummaryWriter
-
 from stock_env.algos.buffer import RolloutBuffer
 from stock_env.common.env_utils import get_device
-
-logging.basicConfig(
-    format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
-)
 
 
 class BasePPO(ABC):
@@ -27,17 +19,6 @@ class BasePPO(ABC):
             gamma=self.args.gamma,
             gae_lambda=self.args.gae_lambda,
         )
-        if self.args.run_name is None:
-            env_id = envs.envs[0].spec.id
-            self.run_name = (
-                f'ppo_{env_id}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
-            )
-        else:
-            self.run_name = f'ppo_{self.args.run_name}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
-        self.log_path = f"log/{self.run_name}"
-        self.model_path = f"model/{self.run_name}.pth"
-        self.writer = SummaryWriter(self.log_path)
-        self.logger = logging.getLogger(__name__)
         self.global_step = 0
 
     @abstractmethod
@@ -48,18 +29,21 @@ class BasePPO(ABC):
     def _train(self, *arg, **kwargs):
         raise NotImplementedError
 
+    @abstractmethod
     def close(self):
-        self.envs.close()
-        self.writer.close()
+        raise NotImplementedError
 
-    def _env_reset(self):
-        self._obs, self._infos = self.envs.reset()
+    def _env_reset(self, envs=None):
+        if envs is None:
+            envs = self.envs
+        self._obs, self._infos = envs.reset()
         self._dones = th.zeros((self.args.num_envs,))
         self._obs = th.Tensor(self._obs).to(self.device)
 
-    def _collect_rollout(self, agent, callback):
-        assert self._obs is not None, "Please call '_train_setup' first"
-
+    def _collect_rollout(self, agent, callback, envs=None):
+        assert self._obs is not None, "Please call '_env_reset' first"
+        if envs is None:
+            envs = self.envs
         self.buffer.reset()
         for step in range(self.buffer.num_steps):
             self.global_step += 1 * self.args.num_envs
@@ -73,7 +57,7 @@ class BasePPO(ABC):
                 next_terminated,
                 next_truncated,
                 next_infos,
-            ) = self.envs.step(actions.cpu().numpy())
+            ) = envs.step(actions.cpu().numpy())
             next_obs = th.Tensor(next_obs).to(self.device)
             rewards = th.Tensor(rewards).to(self.device).flatten()
             next_dones = np.logical_or(next_terminated, next_truncated)
@@ -102,8 +86,10 @@ class BasePPO(ABC):
                         if "episode" in info.keys()
                     ]
                 )
-                callback.update_locals(locals())
-                callback.on_dones()
+
+                if callback is not None:
+                    callback.update_locals(locals(), globals())
+                    callback.on_dones()
 
             # add to buffer
             self.buffer.add(
