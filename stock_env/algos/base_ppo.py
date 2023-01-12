@@ -111,9 +111,7 @@ class BasePPO(ABC):
             self.buffer.compute_returns(next_value, next_dones)
 
     def _ppo_loss(self, agent, rollout_data):
-        _, values, log_prob, entropy = agent.get_action_and_value(
-            rollout_data.obs, rollout_data.actions
-        )
+        _, values, log_prob, entropy = agent(rollout_data.obs, rollout_data.actions)
         values = values.flatten()
 
         # Normalize advantage
