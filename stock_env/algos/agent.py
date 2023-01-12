@@ -8,7 +8,7 @@ from copy import deepcopy
 
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
-    th.nn.init.orthogonal_(layer.weight, std)
+    th.nn.init.xavier_normal_(layer.weight)
     th.nn.init.constant_(layer.bias, bias_const)
     return layer
 
@@ -60,6 +60,9 @@ class Agent(nn.Module):
             probs.log_prob(action).sum(1),
             probs.entropy().sum(1),
         )
+
+    def forward(self, x, action=None):
+        return self.get_action_and_value(x, action)
 
     def get_action(self, x, deterministic=False):
         action_mean = self.actor_mean(x)
