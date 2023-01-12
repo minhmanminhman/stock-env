@@ -119,4 +119,4 @@ class PPO(BasePPO):
 
     def test(self):
         mean, std = self._evaluate()
-        self.logger.info(f"Mean reward: {mean:.2f} +/- {std: .2f}")
+        self.logger.info(f"Evaluation | Mean reward: {mean:.2f} +/- {std: .2f}")
