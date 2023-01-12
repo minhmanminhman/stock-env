@@ -95,10 +95,14 @@ class MAMLLogCallback(BaseCallback):
         )
 
     def on_outer_train(self):
-        epoch = self.locals["self"].epoch
+        _self = self.locals["self"]
+        epoch = _self.epoch
         outer_loss = self.locals["outer_loss"].item()
-        total_norm = self.locals["total_norm"].item()
+        total_norm = self.locals.get("total_norm", 0)
 
         self.writer.add_scalar("outer_train/outer_loss", outer_loss, epoch)
         self.writer.add_scalar("outer_train/total_norm", total_norm, epoch)
         self.logger.info(f"epoch={epoch}, outer_loss={outer_loss :.2f}")
+
+        if _self.run_name.startswith("mamlpp"):
+            self.logger.info(f"lrs={[lr.item() for lr in _self.meta_agent.lrs]}")

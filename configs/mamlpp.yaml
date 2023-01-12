@@ -1,0 +1,101 @@
+common-variables: &common-variables
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_coef: 0.2
+  clip_range_vf: 0.2
+  vf_coef: 0.5
+  ent_coef: 0.01
+  max_grad_norm: 5
+  normalize_advantage: True
+  target_kl: null
+  is_timeout: True
+
+SP500-v0:
+  num_envs: 10
+  num_tasks: 10
+  num_steps: 250
+  epochs: 50
+  n_eval_episodes: 1
+  minibatch_size: 64
+  hiddens: [200, 200, 200, 100, 50]
+  run_name: 'sp500'
+  seed: null
+  <<: *common-variables
+  # mamlpp params
+  inner_steps: 5
+  msl_epoch: 10 # multi step loss
+  meta_lr: !!float 3e-4
+  min_lr: !!float 1e-5
+  inner_optim_kwargs:
+    lr: !!float 1e-2
+    momentum: 0.9
+  test_optim_kwargs:
+    lr: !!float 1e-3
+    momentum: 0.9
+
+# test env
+VNALL-v0:
+  num_envs: 5
+  num_tasks: 5
+  num_steps: 250
+  epochs: 5
+  n_eval_episodes: 5
+  minibatch_size: 64
+  meta_lr: !!float 3e-4
+  hiddens: [200, 200, 200, 100, 50]
+  run_name: 'vnall'
+  seed: null
+  <<: *common-variables
+  # mamlpp params
+  # inner_steps: 5
+  # msl_epoch: 10 # multi step loss
+  # min_lr: !!float 1e-5
+  inner_optim_kwargs:
+    lr: !!float 1e-3
+    momentum: 0.9
+
+MiniFAANG-v0:
+  num_envs: 5
+  num_tasks: 5
+  num_steps: 50
+  epochs: 10
+  n_eval_episodes: 1
+  minibatch_size: 64
+  meta_lr: !!float 1e-2
+  hiddens: [16, 16]
+  run_name: 'miniFAANG'
+  seed: null
+  <<: *common-variables
+  # mamlpp params
+  inner_steps: 3
+  msl_epoch: 2 # multi step loss
+  min_lr: !!float 1e-3
+  inner_optim_kwargs:
+    lr: 0.1
+    momentum: 0.9
+  test_optim_kwargs:
+    lr: !!float 1e-3
+    momentum: 0.9
+
+MiniVNStock-v0:
+  num_envs: 2
+  num_tasks: 3
+  num_steps: 50
+  epochs: 5
+  n_eval_episodes: 1
+  minibatch_size: 64
+  meta_lr: !!float 0.1
+  hiddens: [4, 4]
+  run_name: 'ministock'
+  seed: null
+  <<: *common-variables
+  # mamlpp params
+  inner_steps: 3
+  msl_epoch: 2 # multi step loss
+  min_lr: !!float 1e-2
+  inner_optim_kwargs:
+    lr: 0.1
+    momentum: 0.9
+  test_optim_kwargs:
+    lr: !!float 1e-2
+    momentum: 0.9

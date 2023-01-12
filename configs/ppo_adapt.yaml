@@ -1,0 +1,25 @@
+common-variables: &common-variables
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_coef: 0.2
+  clip_range_vf: 0.2
+  vf_coef: 0.5
+  ent_coef: 0.01
+  max_grad_norm: 5
+  normalize_advantage: True
+  target_kl: null
+
+VNALL-v0:
+  num_envs: 4
+  num_steps: 250
+  total_timesteps: 10000
+  n_eval_episodes: 20
+  minibatch_size: 32
+  gradient_steps: 10
+  learning_rate: !!float 1e-3
+  is_timeout: True
+  evaluate_freq: 5
+  run_name: 'adapt_SSI'
+  task: 'SSI'
+  hiddens: [200, 200, 200, 100, 50]
+  <<: *common-variables

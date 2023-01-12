@@ -1,369 +1,199 @@
 import numpy as np
 import datetime as dt
-import gymnasium as gym
-import yaml
-from types import SimpleNamespace
 import logging
+from copy import deepcopy
 import torch as th
 from torch.utils.tensorboard import SummaryWriter
-from torchmeta.utils.gradient_based import gradient_update_parameters
+import higher
 
-from stock_env.envs import *
-from stock_env.algos.buffer import RolloutBuffer
-from stock_env.algos.agent import MetaAgent
-from stock_env.envs import MetaVectorEnv
+from stock_env.algos.base_ppo import BasePPO
+from stock_env.algos.callback import MAMLLogCallback
 from stock_env.common.evaluation import evaluate_agent
-from stock_env.common.common_utils import get_linear_fn
-
-# GLOBALS
-logging.basicConfig(
-    format="%(asctime)s : %(levelname)s : %(message)s", level=logging.INFO
-)
-global_step = 0
-# evaluate batch
-df = pd.read_csv("temp/evaluate_buffer.csv", index_col=0)
-evaluate_batch = df.loc[:, slice("0", df.columns[-1])].to_numpy()
-evaluate_batch = th.from_numpy(evaluate_batch).float()
 
 
-@th.no_grad()
-def _meta_collect_rollout(
-    args,
-    agent,
-    buffer,
-    envs,
-    is_timeout=True,
-    params=None,
-    writer=None,
-):
-    device = buffer.device
-    buffer.reset()
-    obs, _ = envs.reset()
-    dones = th.zeros((envs.num_envs,))
-    obs = th.Tensor(obs).to(device).to(th.float32)
+class MAML(BasePPO):
+    def __init__(self, args, envs, agent):
+        super().__init__(args, envs, agent)
 
-    for step in range(buffer.num_steps):
-        global global_step
-        global_step += 1 * envs.num_envs
-        actions, values, log_probs, _ = agent.get_action_and_value(obs, params=params)
-        values = values.flatten()
+        self.untrained_agent = deepcopy(self.agent)
+        self.train_envs = self.envs
 
-        next_obs, rewards, next_terminated, next_truncated, next_infos = envs.step(
-            actions.cpu().numpy()
+        # optimizer
+        self.inner_optimiser = th.optim.SGD(
+            self.agent.parameters(), lr=self.args.inner_lr, momentum=0.9
         )
-        next_obs = th.Tensor(next_obs).to(device)
-        rewards = th.Tensor(rewards).to(device).flatten()
-        next_dones = th.Tensor(next_terminated | next_truncated).to(device).flatten()
-
-        if any(next_dones):
-
-            # find which envs are done
-            idx = np.where(next_dones)[0]
-            if is_timeout:
-                final_observation = next_infos["final_observation"][idx][0]
-                # calculated value of final observation
-                final_value = agent.get_value(
-                    th.Tensor(final_observation).to(device), params=params
-                )
-                rewards[idx] += args.gamma * final_value
-
-            # logging
-            if writer is not None:
-                final_infos = next_infos["final_info"][idx]
-                mean_reward = np.mean(
-                    [
-                        info["episode"]["r"]
-                        for info in final_infos
-                        if "episode" in info.keys()
-                    ]
-                )
-                epoch = globals()["epoch"]
-                logging.info(
-                    f"global_step={global_step}, episodic_return={mean_reward :.2f}, epoch={epoch}"
-                )
-                if agent.training:
-                    writer.add_scalar("metric/train_reward", mean_reward, global_step)
-                else:
-                    writer.add_scalar("metric/eval_reward", mean_reward, global_step)
-
-        # add to buffer
-        buffer.add(
-            index=step,
-            obs=obs,
-            actions=actions,
-            logprobs=log_probs,
-            rewards=rewards,
-            dones=dones,
-            values=values,
+        self.meta_optimizer = th.optim.Adam(
+            self.agent.parameters(), lr=self.args.outer_lr
         )
-        obs = next_obs
-        dones = next_dones
-
-    # compute returns
-    next_value = agent.get_value(next_obs, params=params).flatten()
-    buffer.compute_returns(next_value, next_dones)
-    return buffer
-
-
-def _compute_ppo_loss(
-    args,
-    agent,
-    buffer,
-    params=None,
-    writer=None,
-):
-    pg_losses, vf_losses, ent_losses = [], [], []
-    for rollout_data in buffer.get():
-        _, values, log_prob, entropy = agent.get_action_and_value(
-            rollout_data.obs, rollout_data.actions, params=params
-        )
-        values = values.flatten()
-
-        advantages = rollout_data.advantages
-        if args.normalize_advantage:
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-
-        # ratio between old and new policy, should be one at the first iteration
-        log_ratio = log_prob - rollout_data.logprobs
-        ratio = log_ratio.exp()
-
-        # clipped surrogate loss
-        policy_loss_1 = advantages * ratio
-        policy_loss_2 = advantages * th.clamp(
-            ratio, 1 - args.clip_coef, 1 + args.clip_coef
-        )
-        min_policy = th.min(policy_loss_1, policy_loss_2)
-        policy_loss = -min_policy.mean()
-        pg_losses.append(policy_loss.item())
-
-        if args.clip_range_vf is None:
-            # No clipping
-            values_pred = values
-        else:
-            # Clip the difference between old and new value
-            # NOTE: this depends on the reward scaling
-            values_pred = rollout_data.values + th.clamp(
-                values - rollout_data.values,
-                -args.clip_range_vf,
-                args.clip_range_vf,
-            )
-        value_loss = ((rollout_data.returns - values_pred) ** 2).mean()
-        vf_losses.append(value_loss.item())
-
-        # Entropy loss favor exploration
-        if entropy is None:
-            # Approximate entropy when no analytical form
-            entropy_loss = -th.mean(-log_prob)
-        else:
-            entropy_loss = -th.mean(entropy)
-        ent_losses.append(entropy_loss.item())
-
-        loss = policy_loss + args.ent_coef * entropy_loss + args.vf_coef * value_loss
-
-    # logging
-    if writer is not None:
-        if agent.training:
-            writer.add_scalar(
-                "inner_train/policy_loss", np.mean(pg_losses), global_step
-            )
-            writer.add_scalar("inner_train/value_loss", np.mean(vf_losses), global_step)
-            writer.add_scalar(
-                "inner_train/entropy_loss", np.mean(ent_losses), global_step
+        # save path and logging
+        if self.args.run_name is None:
+            env_id = envs.envs[0].spec.id
+            self.run_name = (
+                f'maml_{env_id}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
             )
         else:
-            writer.add_scalar("inner_eval/policy_loss", np.mean(pg_losses), global_step)
-            writer.add_scalar("inner_eval/value_loss", np.mean(vf_losses), global_step)
-            writer.add_scalar(
-                "inner_eval/entropy_loss", np.mean(ent_losses), global_step
-            )
+            self.run_name = f'maml_{self.args.run_name}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
+        self.log_path = f"log/{self.run_name}"
+        self.model_path = f"model/{self.run_name}.pth"
+        self.writer = SummaryWriter(self.log_path)
+        self.logger = logging.getLogger(__name__)
+        self.callback = MAMLLogCallback()
+        self.callback.init_callback(self.logger, self.writer)
 
-            # evaluate a sample batch
-            with th.no_grad():
-                agent.eval()
-                eval_values = agent.get_value(evaluate_batch, params=params)
-            eval_values = eval_values.flatten().cpu().numpy()
-            writer.add_scalar("metric/mean_value", np.mean(eval_values), global_step)
-    return loss
+        # train utils
+        self.best_value, self.save_model = None, False
+        self.train_step, self.test_step = 0, 0
 
+    def close(self):
+        self.envs.close()
+        self.writer.close()
+        del self
 
-def get_task_loss(args, meta_agent, meta_env, buffer, params=None, writer=None):
-    filled_buffer = _meta_collect_rollout(
-        args=args,
-        agent=meta_agent,
-        buffer=buffer,
-        envs=meta_env,
-        params=params,
-        writer=writer,
-    )
+    def _train(self):
+        """inner loop train"""
 
-    loss = _compute_ppo_loss(
-        args=args,
-        agent=meta_agent,
-        buffer=filled_buffer,
-        params=params,
-        writer=writer,
-    )
-    return loss
+        with higher.innerloop_ctx(
+            self.agent, self.inner_optimiser, copy_initial_weights=False
+        ) as (fmodel, diffopt):
 
+            self.envs.train()
+            fmodel.train()
+            self._env_reset()
+            self._collect_rollout(agent=fmodel, callback=self.callback)
 
-def adapt(args, meta_agent, meta_env, buffer, n_adapt_steps, step_size, writer=None):
-
-    params = None
-    l_loss = []
-    meta_agent.train()
-    meta_env.train(True)
-    for _ in range(n_adapt_steps):
-        inner_loss = get_task_loss(
-            args=args,
-            meta_agent=meta_agent,
-            meta_env=meta_env,
-            buffer=buffer,
-            params=params,
-            writer=writer,
-        )
-        l_loss.append(inner_loss.item())  # logging
-
-        meta_agent.zero_grad()
-        params = gradient_update_parameters(
-            model=meta_agent,
-            loss=inner_loss,
-            step_size=step_size,
-            params=params,
-            first_order=(not meta_agent.training),
-        )
-    return params, np.mean(l_loss)
-
-
-if __name__ == "__main__":
-
-    env_id = "SP500-v0"
-
-    # read config from yaml
-    with open("configs/maml.yaml") as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
-        args = config[env_id]
-
-        # calculate some params
-        batch_size = args["num_envs"] * args["num_steps"]
-        args["minibatch_size"] = batch_size // args["num_minibatches"]
-        args["epochs"] = args["total_timesteps"] // batch_size // args["num_tasks"]
-
-        args = SimpleNamespace(**args)
-        logging.info(args)
-
-    if args.run_name is None:
-        run_name = f'maml_{env_id}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
-    else:
-        run_name = f'maml_{args.run_name}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
-
-    device = th.device("cuda" if th.cuda.is_available() else "cpu")
-
-    meta_env = MetaVectorEnv([lambda: gym.make(env_id) for _ in range(args.num_envs)])
-    eval_meta_env = MetaVectorEnv(
-        [lambda: gym.make(env_id) for _ in range(args.num_envs)]
-    )
-    buffer = RolloutBuffer(
-        args.num_steps,
-        meta_env,
-        device=device,
-        gamma=args.gamma,
-        gae_lambda=args.gae_lambda,
-    )
-
-    meta_agent = MetaAgent(meta_env, hiddens=args.hiddens).to(device)
-    meta_optimizer = th.optim.Adam(meta_agent.parameters(), lr=args.outer_lr)
-    scheduler = th.optim.lr_scheduler.StepLR(
-        meta_optimizer, step_size=args.epochs // 2, gamma=0.8
-    )
-    # ent_coef_scheduler = get_linear_fn(
-    #     start=args.ent_coef, end=args.ent_coef_final, end_fraction=0.3
-    # )
-    logging.info(meta_agent)
-    writer = SummaryWriter(f"log/{run_name}")
-
-    try:
-        best_value, save_model = None, False
-
-        for epoch in range(args.epochs):
-
-            tasks = meta_env.sample_task(args.num_tasks)
-            outer_loss = th.tensor(0.0, device=device)
-            task_inner_losses = []
-            for task_idx, task in enumerate(tasks):
-
-                meta_env.reset_task(task)
-
-                meta_agent.train()
-                meta_env.train()
-                # adapt
-                params, inner_loss = adapt(
-                    args,
-                    meta_agent,
-                    meta_env,
-                    buffer,
-                    step_size=args.inner_lr,
-                    n_adapt_steps=1,
-                    writer=writer,
+            # adaption
+            train_batch_loss = []
+            for rollout_data in self.buffer.get(self.args.minibatch_size):
+                policy_loss, value_loss, entropy_loss = self._ppo_loss(
+                    agent=fmodel, rollout_data=rollout_data
                 )
-                task_inner_losses.append(inner_loss.item())  # logging
-
-                # validation
-                meta_env.train(False)
-                meta_agent.eval()
-                valid_loss = get_task_loss(
-                    args, meta_agent, meta_env, buffer, params, writer=writer
+                inner_loss = (
+                    policy_loss
+                    + self.args.ent_coef * entropy_loss
+                    + self.args.vf_coef * value_loss
                 )
+                th.nn.utils.clip_grad_norm_(
+                    fmodel.parameters(), self.args.max_grad_norm
+                )
+                diffopt.step(inner_loss)
 
-                outer_loss += valid_loss
+                train_batch_loss.append(inner_loss.item())
+            mean_train_task_loss = np.mean(train_batch_loss)
 
-            outer_loss.div_(args.num_tasks)
+            # validate adaption
+            self.envs.train(False)
+            fmodel.eval()
+            self._env_reset()
+            self._collect_rollout(agent=fmodel, callback=self.callback)
+            for rollout_data in self.buffer.get():
+                policy_loss, value_loss, entropy_loss = self._ppo_loss(
+                    fmodel, rollout_data
+                )
+                outer_loss = (
+                    policy_loss
+                    + self.args.ent_coef * entropy_loss
+                    + self.args.vf_coef * value_loss
+                )
+            self.callback.update_locals(locals(), globals())
+            self.callback.on_inner_train()
+        return outer_loss
 
-            meta_optimizer.zero_grad()
-            outer_loss.backward()
+    def learn(self):
+
+        for epoch in range(self.args.epochs):
+            self.epoch = epoch
+            tasks = self.envs.sample_task(self.args.num_tasks)
+            outer_loss = th.tensor(0.0, device=self.device)
+
+            # inner loop
+            self.meta_optimizer.zero_grad()
+            for task in tasks:
+                self.envs.reset_task(task)
+                outer_loss += self._train()
+
             # get the gradient norm
-            total_norm = th.nn.utils.clip_grad_norm_(meta_agent.parameters(), 100)
-            meta_optimizer.step()
-            scheduler.step()
-            # args.ent_coef = ent_coef_scheduler(1 - epoch / args.epochs)
+            outer_loss.div_(len(tasks))
+            outer_loss.backward()
+            total_norm = th.nn.utils.clip_grad_norm_(
+                self.agent.parameters(), self.args.max_grad_norm
+            )
+            self.meta_optimizer.step()
 
-            # MISC JOBS
-            # logging
-            writer.add_scalar("outer_train/outer_loss", outer_loss.item(), epoch)
-            writer.add_scalar(
-                "outer_train/mean_inner_loss_over_tasks",
-                np.mean(task_inner_losses),
-                epoch,
-            )
-            writer.add_scalar(
-                "outer_train/lr", meta_optimizer.param_groups[0]["lr"], epoch
-            )
-            writer.add_scalar("outer_train/ent_coef", args.ent_coef, epoch)
-            writer.add_scalar("outer_train/total_norm", total_norm.item(), epoch)
+            self.callback.update_locals(locals(), globals())
+            self.callback.on_outer_train()
 
             # Save best model
-            eval_tasks = eval_meta_env.sample_task(eval_meta_env.num_envs)
-            for task, env in zip(eval_tasks, eval_meta_env.envs):
-                env.reset_task(task)
-
-            mean, std = evaluate_agent(meta_agent, eval_meta_env, args.n_eval_episodes)
-            print(f"Mean reward: {mean:.2f} +/- {std: .2f}")
-            writer.add_scalar("metric/test_reward", mean, epoch)
-
-            if (best_value is None) or (best_value < mean):
-                best_value = mean
-                save_model = True
+            if (self.best_value is None) or (self.best_value > outer_loss.item()):
+                self.best_value = outer_loss.item()
+                self.save_model = True
             else:
-                save_model = False
+                self.save_model = False
 
-            if save_model:
-                th.save(meta_agent.state_dict(), f"model/{run_name}.pth")
+            if self.save_model:
+                th.save(self.agent.state_dict(), self.model_path)
+                self.logger.info(f"Save best model at epoch={epoch}")
 
-    except KeyboardInterrupt:
-        pass
+    def test(self, test_args, test_envs, tasks=None):
 
-    finally:
-        meta_env.close()
-        writer.close()
+        if tasks is None:
+            tasks = test_envs.sample_task(test_args.num_tasks)
+        untrained_agent = deepcopy(self.untrained_agent)
+        adapt_agent = deepcopy(self.untrained_agent)
+        means = []
+        untrained_means = []
+        for task in tasks:
+            test_envs.reset_task(task)
 
-        del meta_agent
-        del meta_env
+            adapt_agent.load_state_dict(th.load(self.model_path))
+            optimizer = th.optim.SGD(
+                adapt_agent.parameters(), lr=test_args.inner_lr, momentum=0.9
+            )
+
+            adapt_agent.train()
+            test_envs.train()
+            self._env_reset(envs=test_envs)
+
+            # adapt
+            self._collect_rollout(adapt_agent, callback=None, envs=test_envs)
+            for rollout_data in self.buffer.get(test_args.minibatch_size):
+                policy_loss, value_loss, entropy_loss = self._ppo_loss(
+                    agent=adapt_agent, rollout_data=rollout_data
+                )
+                inner_loss = (
+                    policy_loss
+                    + test_args.ent_coef * entropy_loss
+                    + test_args.vf_coef * value_loss
+                )
+                optimizer.zero_grad()
+                inner_loss.backward()
+                th.nn.utils.clip_grad_norm_(
+                    adapt_agent.parameters(), test_args.max_grad_norm
+                )
+                optimizer.step()
+
+            adapt_agent.eval()
+            test_envs.train(False)
+
+            # evaluate untrained agent
+            mean, std = evaluate_agent(
+                untrained_agent, test_envs, test_args.n_eval_episodes
+            )
+            untrained_means.append(mean)
+            self.logger.info(
+                f"Task {task} | untrained_agent | Mean reward: {mean:.2f} +/- {std: .2f}"
+            )
+
+            # evaluate adapted agent
+            mean, std = evaluate_agent(
+                adapt_agent, test_envs, test_args.n_eval_episodes
+            )
+            means.append(mean)
+            self.logger.info(
+                f"Task {task} | adapted_agent | Mean reward: {mean:.2f} +/- {std: .2f}"
+            )
+        self.logger.info(
+            f"Test | adapted_agent | Mean reward across tasks: {np.mean(means):.2f} +/- {np.std(means): .2f}"
+        )
+        self.logger.info(
+            f"Test | untrained_agent | Mean reward across tasks: {np.mean(untrained_means):.2f} +/- {np.std(untrained_means): .2f}"
+        )

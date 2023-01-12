@@ -1,91 +1,64 @@
-SP500-v0:
-  num_envs: 4
-  num_tasks: 20
-  num_steps: 250
-  n_adapt_steps: 1
-  n_eval_episodes: 5
-  total_timesteps: 2_000_000
-  num_minibatches: 32
-  save_freq: 5
+common-variables: &common-variables
   gamma: 0.99
   gae_lambda: 0.95
-  outer_lr: !!float 3e-4
-  inner_lr: !!float 3e-3
   clip_coef: 0.2
   clip_range_vf: 0.2
   vf_coef: 0.5
   ent_coef: 0.01
-  max_grad_norm: 10
+  max_grad_norm: 5
   normalize_advantage: True
   target_kl: null
+
+SP500-v0:
+  num_tasks: 10
+  num_envs: 10
+  num_steps: 250
+  epochs: 10
+  is_timeout: True
+  n_eval_episodes: 5
+  minibatch_size: 128
+  outer_lr: !!float 1e-3
+  inner_lr: !!float 0.1
   run_name: 'sp500'
   hiddens: [200, 200, 200, 100, 50]
+  <<: *common-variables
 
 VNALL-v0:
-  num_envs: 4
-  num_tasks: 10
+  num_tasks: 5
+  num_envs: 5
   num_steps: 250
-  n_adapt_steps: 1
-  n_eval_episodes: 20
-  total_timesteps: 20000
-  num_minibatches: 32
-  save_freq: 5
-  gamma: 0.99
-  gae_lambda: 0.95
-  outer_lr: !!float 3e-4
-  inner_lr: !!float 3e-3
-  clip_coef: 0.2
-  clip_range_vf: 0.2
-  vf_coef: 0.5
-  ent_coef: 0.01
-  max_grad_norm: 10
-  normalize_advantage: True
-  target_kl: null
+  epochs: 3
+  n_eval_episodes: 5
+  minibatch_size: 32
+  outer_lr: !!float 1e-3
+  inner_lr: !!float 0.1
   run_name: 'vnall'
   hiddens: [200, 200, 200, 100, 50]
+  <<: *common-variables
 
 MiniFAANG-v0:
   num_envs: 2
   num_tasks: 2
   num_steps: 50
-  n_adapt_steps: 1
-  n_eval_episodes: 5
-  total_timesteps: 20000
-  num_minibatches: 32
-  save_freq: 5
-  gamma: 0.99
-  gae_lambda: 0.95
+  epochs: 3
+  is_timeout: True
+  n_eval_episodes: 1
+  minibatch_size: 64
   outer_lr: !!float 3e-4
   inner_lr: !!float 3e-3
-  clip_coef: 0.2
-  clip_range_vf: 0.2
-  vf_coef: 0.19
-  ent_coef: 0.02
-  max_grad_norm: 5
-  normalize_advantage: True
-  target_kl: null
-  run_name: null
   hiddens: [4, 4]
+  run_name: 'miniFAANG'
+  <<: *common-variables
 
 MiniVNStock-v0:
   num_envs: 2
-  num_tasks: 2
+  num_tasks: 3
   num_steps: 50
-  n_adapt_steps: 1
-  n_eval_episodes: 5
-  total_timesteps: 20000
-  num_minibatches: 32
-  save_freq: 5
-  gamma: 0.99
-  gae_lambda: 0.95
+  epochs: 3
+  n_eval_episodes: 1
+  minibatch_size: 64
   outer_lr: !!float 3e-4
   inner_lr: !!float 3e-3
-  clip_coef: 0.2
-  clip_range_vf: 0.2
-  vf_coef: 0.5
-  ent_coef: 0.01
-  max_grad_norm: 10
-  normalize_advantage: True
-  target_kl: null
-  run_name: null
+  run_name: 'miniVNStock'
   hiddens: [4, 4]
+  <<: *common-variables
