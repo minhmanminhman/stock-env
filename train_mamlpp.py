@@ -6,14 +6,11 @@ from stock_env.common.env_utils import make_vec_env
 if __name__ == "__main__":
     env_id = "SP500-v0"
     test_env_id = "VNALL-v0"
-    # env_id = "MiniFAANG-v0"
-    # test_env_id = "MiniVNStock-v0"
     configs_path = "configs/mamlpp.yaml"
 
     args = open_config(configs_path, env_id=env_id)
     envs = make_vec_env(env_id, num_envs=args.num_envs)
     algo = MAMLPlusPlus(args, envs)
-
     try:
         algo.learn()
     except KeyboardInterrupt:

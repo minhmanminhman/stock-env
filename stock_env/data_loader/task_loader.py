@@ -10,13 +10,15 @@ class USTaskLoader(USStockLoader, BaseTaskLoader):
         feature_extractor: BaseFeaturesExtractor = TrendFeatures,
         max_episode_steps: int = 250,
         test_pct: float = 0.2,
-        data_period: str = "1y",
+        start_date: str = "1992-01-01",
+        end_date: str = "2022-12-31",
     ):
         super().__init__(
             tickers=tickers,
             feature_extractor=feature_extractor,
             max_episode_steps=max_episode_steps,
-            data_period=data_period,
+            start_date=start_date,
+            end_date=end_date,
         )
         self.episode_ticker = None
         self.test_pct = test_pct
@@ -44,6 +46,9 @@ class USTaskLoader(USStockLoader, BaseTaskLoader):
         test_mask = start_idxes >= np.quantile(start_idxes, 1 - self.test_pct)
         self.train_idxes = start_idxes[~test_mask]
         self.test_idxes = start_idxes[test_mask]
+        # bug: sometimes last test index contains only 1 obs ahead, remove it
+        if self.ohlcv.iloc[self.test_idxes[-1] :].shape[0] == 1:
+            self.test_idxes = self.test_idxes[:-1]
 
         if self.train_mode:
             idxes = self.train_idxes
@@ -67,7 +72,7 @@ class VNTaskLoader(VNStockLoader, BaseTaskLoader):
         tickers: list,
         feature_extractor: BaseFeaturesExtractor,
         max_episode_steps: int = 250,
-        start_date: str = "2016-01-01",
+        start_date: str = "2014-01-01",
         end_date: str = "2022-12-31",
         test_pct: float = 0.2,
     ):

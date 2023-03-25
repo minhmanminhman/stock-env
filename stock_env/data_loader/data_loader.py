@@ -1,4 +1,5 @@
 import pandas as pd
+import pandas_ta as ta
 import mt4_hst
 import numpy as np
 import yfinance
@@ -133,12 +134,14 @@ class USStockLoader(RandomStockLoader):
         tickers: list,
         feature_extractor: Type[BaseFeaturesExtractor],
         max_episode_steps: int = 250,
-        data_period: str = "1y",
+        start_date: str = "1972-01-01",
+        end_date: str = "2022-12-31",
     ):
         self.tickers = tickers
         self.max_episode_steps = max_episode_steps
         self.train_mode = True
-        self.data_period = data_period
+        self.start_date = start_date
+        self.end_date = end_date
 
         self.feature_extractor = feature_extractor()
         df = self._load_data()
@@ -158,7 +161,11 @@ class USStockLoader(RandomStockLoader):
             str_ticker += f" {ticker}"
 
         # download data
-        data = yfinance.download(str_ticker, period=self.data_period)
+        data = yfinance.download(
+            tickers=str_ticker,
+            start=self.start_date,
+            end=self.end_date,
+        )
 
         # format for BaseFeaturesExtractor.preprocess api
         data = data.stack()

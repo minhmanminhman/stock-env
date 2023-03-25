@@ -5,7 +5,9 @@ from gymnasium import spaces
 from .base_env import BaseVietnamStockEnv
 from .base_env import Position
 from ..data_loader import BaseDataLoader
-from empyrical import max_drawdown
+from empyrical import max_drawdown, sharpe_ratio
+from copy import deepcopy
+from empyrical import roll_max_drawdown
 
 
 class RandomStockEnv(BaseVietnamStockEnv):
@@ -28,7 +30,7 @@ class RandomStockEnv(BaseVietnamStockEnv):
         self.fee = fee
         self.position = Position()
         # obs and action
-        self.obs_dim = self.data_loader.feature_dim + 4
+        self.obs_dim = self.data_loader.feature_dim + 3
         self.observation_space = spaces.Box(
             -np.inf, np.inf, (self.obs_dim,), np.float32
         )
@@ -70,6 +72,7 @@ class RandomStockEnv(BaseVietnamStockEnv):
             "cash": [],
             "time": [],
             "step_reward": [],
+            "close_price": [],
         }
         features, info = self.data_loader.reset()
         self.start_close_price = self.data_loader.current_ohlcv.close.item()
@@ -101,6 +104,7 @@ class RandomStockEnv(BaseVietnamStockEnv):
             nav=self.nav,
             cash=self.cash,
             time=self.data_loader.current_ohlcv.time,
+            close_price=self.data_loader.current_ohlcv.close.item(),
             step_reward=step_reward,
         )
         self._update_history(info)
@@ -115,7 +119,7 @@ class RandomStockEnv(BaseVietnamStockEnv):
 
     def _modify_quantity(self, delta_shares: int) -> int:
         """
-        modify quantity according to market contraint like T+3 or max quantity
+        modify quantity according to market constraint like T+3 or max quantity
         """
         _delta_shares = delta_shares
         if _delta_shares >= 0:  # long or hold
@@ -134,12 +138,12 @@ class RandomStockEnv(BaseVietnamStockEnv):
 
     @property
     def _port_feature(self):
+
         return np.array(
             [
                 self.cash / self.portfolio_value,
                 self.portfolio_value / self.init_cash - 1,
                 self.close_price / self.start_close_price - 1,
-                (self.buynhold_quantity * self.close_price) / self.init_cash - 1,
             ]
         )
 
@@ -169,20 +173,37 @@ class RandomStockEnv(BaseVietnamStockEnv):
         # compare with holding
         cum_return_from_holding = (self.close_price / self.start_close_price) - 1
         diff = cum_return - cum_return_from_holding
-
-        returns = pd.Series(self.history["portfolio_value"][-50:]).pct_change()
-        max_dd = np.abs(max_drawdown(returns))
-        max_dd = max_dd if not np.isnan(max_dd) else 0.0
-
-        last_pv = self.history["portfolio_value"][-5:]
-        if len(last_pv) == 0:
-            last_pv = self.init_cash
+        returns = pd.Series(self.history["portfolio_value"]).pct_change()
+        if cum_return < 0:
+            reward = -0.5 - 0.1 * int(cum_return < -0.2)
         else:
-            last_pv = last_pv[0]
-        bonus_reward = self.portfolio_value / last_pv - 1
+            try:
+                roll_mdd = roll_max_drawdown(returns, window=50).iloc[-1]
+            except:
+                roll_mdd = 0.0
+            reward = 0.5 - 0.1 * int(roll_mdd < -0.2)
+        return reward + 0.5 * np.sign(diff)
 
-        reward = cum_return + 0.5 * (diff + bonus_reward)
-        return reward
+    # def _calculate_reward(self, *args, **kwargs) -> float:
+    #     try:
+    #         last_pv = self.history["portfolio_value"][-1]
+    #     except:
+    #         last_pv = self.init_cash
+    #     return self.portfolio_value - last_pv
+
+    # def _calculate_reward(self, *args, **kwargs) -> float:
+    #     try:
+    #         last_pv = self.history["portfolio_value"][-1]
+    #     except:
+    #         last_pv = self.init_cash
+    #     return np.log(self.portfolio_value / (last_pv + 1e-8))
+
+    # def _calculate_reward(self, *args, **kwargs) -> float:
+    #     pv = deepcopy(self.history["portfolio_value"])
+    #     pv.append(self.portfolio_value)
+    #     returns = pd.Series(pv).pct_change().fillna(0)
+    #     ratio = returns.mean() / (returns.std() + 1e-8)
+    #     return ratio if not np.isnan(ratio) else 0
 
     def get_history(self):
         history_df = pd.DataFrame(self.history)

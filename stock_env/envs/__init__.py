@@ -1,6 +1,7 @@
 from .base_env import *
 from .random_stock import *
 from stock_env.envs.task_stock import *
+from stock_env.data_loader import *
 from stock_env.envs.vec_task_env import *
 from stock_env.wrappers import StackAndSkipObs, DiscretizeAction
 from stock_env.common.common_utils import open_config
@@ -17,8 +18,10 @@ def make_task_env(name, gamma=0.99, env_kwargs={}):
         import pathlib
 
         path = pathlib.Path(__file__).parent.parent.joinpath("datasets").resolve()
-
-        task_loader = USTaskLoader.load(f"{path}/{name}")
+        if name in ["sp500", "mini_faang"]:
+            task_loader = USTaskLoader.load(f"{path}/{name}")
+        elif name in ["vnall", "mini_vnstock"]:
+            task_loader = VNTaskLoader.load(f"{path}/{name}")
         env = TaskStockEnv(task_loader, **env_kwargs)
 
         # temp reset_task to create env, should be reset later
@@ -26,7 +29,7 @@ def make_task_env(name, gamma=0.99, env_kwargs={}):
         env.reset_task(_task)
 
         # wrap env
-        env = StackAndSkipObs(env, num_stack=5, num_skip=3)
+        env = StackAndSkipObs(env, num_stack=20, num_skip=1)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = gym.wrappers.ClipAction(env)
         env = gym.wrappers.NormalizeObservation(env)

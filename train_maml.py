@@ -4,12 +4,9 @@ from stock_env.envs import *
 from stock_env.common.common_utils import open_config
 from stock_env.common.env_utils import make_vec_env
 
-
 if __name__ == "__main__":
     env_id = "SP500-v0"
     test_env_id = "VNALL-v0"
-    # env_id = "MiniFAANG-v0"
-    # test_env_id = "MiniVNStock-v0"
 
     args = open_config("configs/maml.yaml", env_id=env_id)
     envs = make_vec_env(env_id, num_envs=args.num_envs)

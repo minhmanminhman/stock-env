@@ -40,8 +40,8 @@ class TrendFeatures(BaseFeaturesExtractor):
     def __init__(self):
         self.required_cols = set("time open high low close volume".split())
         self.feature_cols = """
-            TS_Trends ADX_20 AROOND_20 AROONU_20 
-            AROONOSC_20 STC_10_10_20_0.5 STCstoch_10_10_20_0.5 
+            TS_Trends ADX_20 AROOND_20 AROONU_20
+            AROONOSC_20 STC_10_10_20_0.5 STCstoch_10_10_20_0.5
             NATR_20 RSI_20 CCI_20_0.015 EMA_ratio LOW_ratio above_MA
             """.split()
         self.feature_dim = len(self.feature_cols)
@@ -179,33 +179,33 @@ class SimpleTrendFeatures(BaseFeaturesExtractor):
         df.sort_values("time", inplace=True)
         df = df.reset_index(drop=True)
 
-        df.ta.adx(length=50, scalar=1, append=True)
-        df.ta.aroon(length=50, scalar=1, talib=False, append=True)
-        df.ta.stc(tclength=10, fast=10, slow=20, append=True)
-        df.ta.natr(length=50, scalar=1, talib=False, append=True)
-        df.ta.rsi(length=50, scalar=1, talib=False, append=True)
-        df.ta.cci(length=50, scalar=1, append=True)
-        df["CCI_50_0.015"] = df["CCI_50_0.015"] / 100
-        df[["STC_10_10_20_0.5", "STCstoch_10_10_20_0.5"]] = (
-            df[["STC_10_10_20_0.5", "STCstoch_10_10_20_0.5"]] / 100
+        df.ta.adx(length=14, scalar=1, append=True)
+        df.ta.aroon(length=14, scalar=1, talib=False, append=True)
+        df.ta.stc(tclength=10, fast=12, slow=26, append=True)
+        df.ta.natr(length=20, scalar=1, talib=False, append=True)
+        df.ta.rsi(length=14, scalar=1, talib=False, append=True)
+        df.ta.cci(length=14, scalar=1, append=True)
+        df["CCI_14_0.015"] = df["CCI_14_0.015"] / 100
+        df[["STC_10_12_26_0.5", "STCstoch_10_12_26_0.5"]] = (
+            df[["STC_10_12_26_0.5", "STCstoch_10_12_26_0.5"]] / 100
         )
-        df["RSI_candle"] = (df["RSI_50"] > 0.5).astype(int)
+        # df["RSI_candle"] = (df["RSI_50"] > 0.5).astype(int)
 
         df.ta.macd(fast=10, slow=20, signal=10, append=True)
         df.ta.macd(fast=20, slow=50, signal=10, append=True)
         df.ta.macd(fast=50, slow=100, signal=10, append=True)
-        df.ta.macd(fast=100, slow=200, signal=10, append=True)
+        df.ta.macd(fast=150, slow=200, signal=10, append=True)
         df["LOW_ratio"] = talib.MIN(df.low, timeperiod=20) / talib.MIN(
             df.low, timeperiod=50
         )
-        df["VOLUME_ratio"] = df.volume / talib.EMA(df.volume, timeperiod=20)
+        df["VOLUME_ratio"] = df.volume / talib.SMA(df.volume, timeperiod=20)
 
         # get feature_cols
         df.dropna(inplace=True)
         cols = df.columns
         cols = cols[
             cols.str.startswith(
-                ("MACD", "ADX", "AROON", "STC", "NATR", "RSI", "CCI", "DMP")
+                ("MACDh", "ADX", "DMP", "DMN", "AROON", "STC", "NATR", "RSI", "CCI")
             )
             | cols.str.endswith("ratio")
         ]

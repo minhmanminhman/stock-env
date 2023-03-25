@@ -1,6 +1,6 @@
 import datetime as dt
 import logging
-
+from copy import deepcopy
 import torch as th
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
@@ -27,8 +27,8 @@ class PPO(BasePPO):
             )
         else:
             self.run_name = f'ppo_{self.args.run_name}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
-        self.log_path = f"log/{self.run_name}"
-        self.model_path = f"model/{self.run_name}.pth"
+        self.log_path = f"{self.args.log_folder}/{self.run_name}"
+        self.model_path = f"{self.args.model_folder}/{self.run_name}.pth"
         self.writer = SummaryWriter(self.log_path)
         self.logger = logging.getLogger(__name__)
         self.callback = PPOLogCallback()
@@ -42,6 +42,10 @@ class PPO(BasePPO):
         self.envs.close()
         self.writer.close()
         del self
+
+    @property
+    def progress_remaining(self):
+        return 1 - self.global_step / self.args.total_timesteps
 
     def _train(self, callback=None):
 
@@ -78,11 +82,13 @@ class PPO(BasePPO):
             callback.update_locals(locals(), globals())
             callback.on_train()
 
-    def _evaluate(self):
-        self.agent.eval()
+    def _evaluate(self, agent=None):
+        if agent is None:
+            agent = self.agent
+        agent.eval()
         self.envs.train(False)
         mean, std = evaluate_agent(
-            agent=self.agent,
+            agent=agent,
             envs=self.envs,
             n_eval_episodes=self.args.n_eval_episodes,
         )
@@ -92,11 +98,17 @@ class PPO(BasePPO):
 
         self._env_reset()
         epoch = 0
+        # first evaluation to measure the performance of the random policy
+        mean, std = self._evaluate()
+        self.logger.info(f"Mean reward: {mean:.2f} +/- {std: .2f}")
+        self.writer.add_scalar("metric/eval_reward", mean, epoch)
         while self.global_step < self.args.total_timesteps:
             epoch += 1
             self.agent.train()
             self.envs.train()
-            self._collect_rollout(agent=self.agent, callback=self.callback)
+            self._collect_rollout(
+                agent=self.agent, callback=self.callback, use_exploration=True
+            )
             self._train(callback=self.callback)
 
             # Save best model
@@ -116,7 +128,10 @@ class PPO(BasePPO):
 
             if self.save_model:
                 th.save(self.agent.state_dict(), self.model_path)
+                self.logger.info(f"Save best model at epoch={epoch}")
 
     def test(self):
-        mean, std = self._evaluate()
+        best_agent = deepcopy(self.agent)
+        best_agent.load_state_dict(th.load(self.model_path))
+        mean, std = self._evaluate(agent=best_agent)
         self.logger.info(f"Evaluation | Mean reward: {mean:.2f} +/- {std: .2f}")

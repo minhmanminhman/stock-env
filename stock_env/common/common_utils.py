@@ -18,6 +18,7 @@ from empyrical import (
     sharpe_ratio,
     max_drawdown,
     value_at_risk,
+    roll_max_drawdown
 )
 
 
@@ -70,9 +71,9 @@ def plot_trade_log_v2(data: pd.DataFrame):
     ax[0].legend()
 
     ax[1].grid(True)
-    ax[1].set_title("Quantity")
+    ax[1].set_title("% Cash")
     # TODO: rename
-    ax[1].plot(data["time"], data["quantity"], label="Quantity")
+    ax[1].plot(data["time"], data["cash"] / data["portfolio_value"], label="% Cash")
     ax[1].legend()
 
 
@@ -276,3 +277,9 @@ def get_linear_fn(start: float, end: float, end_fraction: float) -> Callable:
             return start + (1 - progress_remaining) * (end - start) / end_fraction
 
     return func
+
+
+def complement_action(action, action_space):
+    low = action_space.low
+    high = action_space.high
+    return high - (action - low)

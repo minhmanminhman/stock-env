@@ -41,6 +41,8 @@ class VNDDataLoader:
         res = requests.get(API_VNDIRECT, params=params, headers=HEADERS)
         data = res.json()["data"]
         data = pd.DataFrame(data)
+        # filter weird ticker, e.g. SSI-SCA
+        data = data[data["code"] == symbol]
         data = data.sort_values(by="date")
         data = data.reset_index(drop=True)
         data["volume"] = data["nmVolume"] + data["ptVolume"]

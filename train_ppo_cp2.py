@@ -14,7 +14,7 @@ if __name__ == "__main__":
     startwith = args_.startwith
 
     env_id = "VNALL-v0"  # <<<<< CHANGE PARAM HERE
-    algo_config = "configs/ppo.yaml"  # <<<<< CHANGE PARAM HERE
+    algo_config = "configs/ppo_cp2.yaml"  # <<<<< CHANGE PARAM HERE
 
     args = open_config(algo_config, env_id=env_id)
     envs = make_vec_env(env_id, num_envs=args.num_envs, task=args.task)
@@ -26,7 +26,7 @@ if __name__ == "__main__":
             # update task
             args.task = ticker
             # args.run_name = ticker
-            args.run_name = f"noexplore_{ticker}"
+            args.run_name = f"explore0.2_{ticker}"
 
             logging.info(f"Training task: {ticker}")
 

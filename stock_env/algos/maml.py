@@ -62,7 +62,7 @@ class MAML(BasePPO):
             self._collect_rollout(agent=fmodel, callback=self.callback)
 
             # adaption
-            train_batch_loss = []
+            train_batch_loss, total_inner_norm = [], []
             for rollout_data in self.buffer.get(self.args.minibatch_size):
                 policy_loss, value_loss, entropy_loss = self._ppo_loss(
                     agent=fmodel, rollout_data=rollout_data
@@ -72,13 +72,15 @@ class MAML(BasePPO):
                     + self.args.ent_coef * entropy_loss
                     + self.args.vf_coef * value_loss
                 )
-                th.nn.utils.clip_grad_norm_(
+                _inner_total_norm = th.nn.utils.clip_grad_norm_(
                     fmodel.parameters(), self.args.max_grad_norm
                 )
                 diffopt.step(inner_loss)
 
                 train_batch_loss.append(inner_loss.item())
+                total_inner_norm.append(_inner_total_norm.item())
             mean_train_task_loss = np.mean(train_batch_loss)
+            mean_inner_norm = np.mean(total_inner_norm)
 
             # validate adaption
             self.envs.train(False)
@@ -94,6 +96,7 @@ class MAML(BasePPO):
                     + self.args.ent_coef * entropy_loss
                     + self.args.vf_coef * value_loss
                 )
+                outer_loss.backward()
             self.callback.update_locals(locals(), globals())
             self.callback.on_inner_train()
         return outer_loss
@@ -113,7 +116,7 @@ class MAML(BasePPO):
 
             # get the gradient norm
             outer_loss.div_(len(tasks))
-            outer_loss.backward()
+            # outer_loss.backward()
             total_norm = th.nn.utils.clip_grad_norm_(
                 self.agent.parameters(), self.args.max_grad_norm
             )

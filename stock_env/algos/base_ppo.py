@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 import torch as th
 from stock_env.algos.buffer import RolloutBuffer
 from stock_env.common.env_utils import get_device
+from stock_env.common.common_utils import complement_action, get_linear_fn
 
 
 class BasePPO(ABC):
@@ -20,6 +21,7 @@ class BasePPO(ABC):
             gae_lambda=self.args.gae_lambda,
         )
         self.global_step = 0
+        self.exploration_scheduler = get_linear_fn(**self.args.explore_kwargs)
 
     @abstractmethod
     def learn(self, *arg, **kwargs):
@@ -33,6 +35,11 @@ class BasePPO(ABC):
     def close(self):
         raise NotImplementedError
 
+    @property
+    @abstractmethod
+    def progress_remaining(self):
+        raise NotImplementedError
+
     def _env_reset(self, envs=None):
         if envs is None:
             envs = self.envs
@@ -40,15 +47,35 @@ class BasePPO(ABC):
         self._dones = th.zeros((self.args.num_envs,))
         self._obs = th.Tensor(self._obs).to(self.device)
 
-    def _collect_rollout(self, agent, callback, envs=None):
+    def _collect_rollout(
+        self, agent, callback, envs=None, buffer=None, use_exploration=False
+    ):
         assert self._obs is not None, "Please call '_env_reset' first"
         if envs is None:
             envs = self.envs
-        self.buffer.reset()
-        for step in range(self.buffer.num_steps):
+        if buffer is None:
+            buffer = self.buffer
+
+        buffer.reset()
+        for step in range(buffer.num_steps):
             self.global_step += 1 * self.args.num_envs
             with th.no_grad():
+
                 actions, values, log_probs, _ = agent.get_action_and_value(self._obs)
+
+                if use_exploration and np.random.rand() < self.exploration_scheduler(
+                    self.progress_remaining
+                ):
+                    action_shape = actions.shape
+                    c_actions = complement_action(
+                        actions.cpu().numpy(), envs.single_action_space
+                    )
+                    c_actions = (
+                        th.Tensor(c_actions).to(self.device).reshape(action_shape)
+                    )
+                    actions, values, log_probs, _ = agent.get_action_and_value(
+                        self._obs, c_actions
+                    )
                 values = values.flatten()
 
             (
@@ -92,7 +119,7 @@ class BasePPO(ABC):
                     callback.on_dones()
 
             # add to buffer
-            self.buffer.add(
+            buffer.add(
                 index=step,
                 obs=self._obs,
                 actions=actions,
@@ -108,7 +135,9 @@ class BasePPO(ABC):
         with th.no_grad():
             next_value = agent.get_value(next_obs)
             next_value = next_value.flatten()
-            self.buffer.compute_returns(next_value, next_dones)
+            buffer.compute_returns(next_value, next_dones)
+
+        return buffer
 
     def _ppo_loss(self, agent, rollout_data):
         _, values, log_prob, entropy = agent(rollout_data.obs, rollout_data.actions)

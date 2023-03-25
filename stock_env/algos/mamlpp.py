@@ -1,6 +1,7 @@
 import numpy as np
 import datetime as dt
 from typing import List
+from collections import deque
 import logging
 from copy import deepcopy
 import torch as th
@@ -42,26 +43,15 @@ class MAMLPlusPlusAgent(nn.Module):
             {"params": p, "lr": self.args.inner_optim_kwargs["lr"]}
             for p in self.agent.parameters()
         ]
-        # print(len(param_groups))
-        self.inner_opt = th.optim.SGD(param_groups, **self.args.inner_optim_kwargs)
 
+        self.inner_opt = th.optim.SGD(param_groups, **self.args.inner_optim_kwargs)
         t = higher.optim.get_trainable_opt_params(self.inner_opt)
         self._lrs = nn.ParameterList(map(nn.Parameter, t["lr"]))
-        # lrs = [th.ones(1) * p["lr"] for p in param_groups]
-        # self.lrs = nn.ParameterList([nn.Parameter(lr) for lr in lrs])
-        # self.lrs = t["lr"]
-
-        # print("Outer Loop parameters")
-        # param_shapes = []
-        # for name, param in self.named_parameters():
-        #     print(name, param.shape, param.device, param.requires_grad)
-        #     param_shapes.append(param.shape)
-        # print(f"n_params: {sum(map(np.prod, param_shapes))}")
 
     @property
     def lrs(self):
         for lr in self._lrs:
-            lr.data[lr < 1e-4] = 1e-4
+            lr.data[lr < 1e-5] = 1e-5
         return self._lrs
 
     def trainable_parameters(self):
@@ -74,9 +64,9 @@ class MAMLPlusPlusAgent(nn.Module):
 
 
 class MAMLPlusPlus(BasePPO):
-    def __init__(self, args, envs, activation_fn: nn.Module = nn.LeakyReLU):
+    def __init__(self, args, envs, activation_fn: nn.Module = nn.ReLU):
         super().__init__(args, envs, agent=None)
-
+        self.val_buffer = deepcopy(self.buffer)
         self.meta_agent = MAMLPlusPlusAgent(args, envs, activation_fn=activation_fn)
         self.agent = self.meta_agent.agent
         self.untrained_agent = deepcopy(self.agent)
@@ -101,13 +91,18 @@ class MAMLPlusPlus(BasePPO):
             self.run_name = f'mamlpp_{self.args.run_name}_{dt.datetime.now().strftime("%Y%m%d_%H%M%S")}'
         self.log_path = f"log/{self.run_name}"
         self.model_path = f"model/{self.run_name}.pth"
+        self.best_model_path = f"model/{self.run_name}_all_time_best.pth"
         self.writer = SummaryWriter(self.log_path)
         self.logger = logging.getLogger(__name__)
         self.callback = MAMLLogCallback()
         self.callback.init_callback(self.logger, self.writer)
 
         # train utils
-        self.best_value, self.save_model = None, False
+        self.best_values, self.all_time_best, self.save_model = (
+            deque(maxlen=10),
+            None,
+            False,
+        )
         self.train_step, self.test_step = 0, 0
 
     def close(self):
@@ -141,12 +136,20 @@ class MAMLPlusPlus(BasePPO):
             for step in range(self.args.inner_steps):
                 self.envs.train()
                 fmodel.train()
-                self._env_reset()
-                self._collect_rollout(agent=fmodel, callback=self.callback)
+
+                # if step == 0:
+                if True:
+                    self._env_reset()
+                    # store data to train_buffer
+                    train_buffer = self._collect_rollout(
+                        agent=fmodel, callback=self.callback, use_exploration=True
+                    )
+                else:
+                    train_buffer = self.buffer
 
                 # adaption
                 train_batch_loss = []
-                for rollout_data in self.buffer.get(self.args.minibatch_size):
+                for rollout_data in train_buffer.get(self.args.minibatch_size):
                     policy_loss, value_loss, entropy_loss = self._ppo_loss(
                         agent=fmodel, rollout_data=rollout_data
                     )
@@ -163,10 +166,18 @@ class MAMLPlusPlus(BasePPO):
                 # validate adaption
                 self.envs.train(False)
                 fmodel.eval()
-                self._env_reset()
-                self._collect_rollout(agent=fmodel, callback=self.callback)
 
-                for rollout_data in self.buffer.get():
+                # if step == 0:
+                if True:
+                    self._env_reset()
+                    # store data to val_buffer
+                    val_buffer = self._collect_rollout(
+                        agent=fmodel, callback=self.callback, buffer=self.val_buffer
+                    )
+                else:
+                    val_buffer = self.val_buffer
+
+                for rollout_data in val_buffer.get():
                     policy_loss, value_loss, entropy_loss = self._ppo_loss(
                         fmodel, rollout_data
                     )
@@ -186,6 +197,10 @@ class MAMLPlusPlus(BasePPO):
             self.callback.on_inner_train()
         return outer_loss
 
+    @property
+    def progress_remaining(self):
+        return 1 - self.epoch / self.args.epochs
+
     def learn(self):
 
         for epoch in range(self.args.epochs):
@@ -196,6 +211,7 @@ class MAMLPlusPlus(BasePPO):
             # inner loop
             self.meta_agent.zero_grad()
             for task in tasks:
+                self.logger.info(f"Learning task: {task}")
                 self.envs.reset_task(task)
                 outer_loss += self._train()
 
@@ -213,8 +229,9 @@ class MAMLPlusPlus(BasePPO):
             self.callback.on_outer_train()
 
             # Save best model
-            if (self.best_value is None) or (self.best_value > outer_loss.item()):
-                self.best_value = outer_loss.item()
+            _outer_loss = outer_loss.item()
+            self.best_values.append(_outer_loss)
+            if abs(min(self.best_values) - _outer_loss) < 1e-8:
                 self.save_model = True
             else:
                 self.save_model = False
@@ -222,6 +239,11 @@ class MAMLPlusPlus(BasePPO):
             if self.save_model:
                 th.save(self.agent.state_dict(), self.model_path)
                 self.logger.info(f"Save best model at epoch={epoch}")
+
+            if self.all_time_best is None or self.all_time_best > _outer_loss:
+                self.all_time_best = _outer_loss
+                th.save(self.agent.state_dict(), self.best_model_path)
+                self.logger.info(f"Save all-time best model at epoch={epoch}")
 
     def test(self, test_args, test_envs, tasks=None):
 
@@ -236,7 +258,7 @@ class MAMLPlusPlus(BasePPO):
 
             adapt_agent.load_state_dict(th.load(self.model_path))
             optimizer = th.optim.SGD(
-                adapt_agent.parameters(), **self.args.inner_optim_kwargs
+                adapt_agent.parameters(), **test_args.inner_optim_kwargs
             )
 
             adapt_agent.train()
@@ -282,8 +304,8 @@ class MAMLPlusPlus(BasePPO):
                 f"Task {task} | adapted_agent | Mean reward: {mean:.2f} +/- {std: .2f}"
             )
         self.logger.info(
-            f"Test | adapted_agent | Mean reward across tasks: {np.mean(means):.2f} +/- {np.std(means): .2f}"
+            f"Test | untrained_agent | Mean reward across tasks: {np.mean(untrained_means):.2f} +/- {np.std(untrained_means): .2f}"
         )
         self.logger.info(
-            f"Test | untrained_agent | Mean reward across tasks: {np.mean(untrained_means):.2f} +/- {np.std(untrained_means): .2f}"
+            f"Test | adapted_agent | Mean reward across tasks: {np.mean(means):.2f} +/- {np.std(means): .2f}"
         )

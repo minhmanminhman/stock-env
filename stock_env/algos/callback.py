@@ -72,7 +72,7 @@ class MAMLLogCallback(BaseCallback):
     def on_dones(self):
         global_step = self.locals["self"].global_step
         mean_reward = self.locals["mean_reward"]
-        is_training = self.locals["self"].agent.training
+        is_training = self.locals["agent"].training
         epoch = self.locals["self"].epoch
 
         if is_training:
@@ -84,14 +84,18 @@ class MAMLLogCallback(BaseCallback):
             )
 
     def on_inner_train(self):
-        global_step = self.locals["self"].global_step
+        _self = self.locals["self"]
+        global_step = _self.global_step
+        task = _self.envs.envs[0].data_loader.episode_ticker
         inner_loss = self.locals["mean_train_task_loss"]
+        # inner_norm = self.locals["mean_inner_norm"]
         outer_loss = self.locals["outer_loss"].item()
 
         self.writer.add_scalar("inner_train/inner_loss", inner_loss, global_step)
+        # self.writer.add_scalar("inner_train/inner_norm", inner_norm, global_step)
         self.writer.add_scalar("inner_train/outer_loss", outer_loss, global_step)
         self.logger.info(
-            f"global_step={global_step}, inner_loss={inner_loss :.2f}, outer_loss={outer_loss :.2f}"
+            f"global_step={global_step}, task={task}, inner_loss={inner_loss :.4f}, outer_loss={outer_loss :.4f}"
         )
 
     def on_outer_train(self):

@@ -5,33 +5,39 @@ common-variables: &common-variables
   clip_range_vf: 0.2
   vf_coef: 0.5
   ent_coef: 0.01
-  max_grad_norm: 5
+  max_grad_norm: 2
+  max_loss: 5
   normalize_advantage: True
   target_kl: null
   is_timeout: True
 
 SP500-v0:
-  num_envs: 10
+  num_envs: 4
   num_tasks: 10
   num_steps: 250
-  epochs: 50
+  epochs: 200
   n_eval_episodes: 1
-  minibatch_size: 64
-  hiddens: [200, 200, 200, 100, 50]
+  minibatch_size: 500
   run_name: 'sp500'
   seed: null
   <<: *common-variables
   # mamlpp params
-  inner_steps: 5
-  msl_epoch: 10 # multi step loss
-  meta_lr: !!float 3e-4
-  min_lr: !!float 1e-5
+  inner_steps: 3
+  msl_epoch: 20 # multi step loss
+  meta_lr: !!float 7e-5
+  min_lr: !!float 1e-6
   inner_optim_kwargs:
-    lr: !!float 1e-2
+    lr: !!float 1e-4
     momentum: 0.9
-  test_optim_kwargs:
-    lr: !!float 1e-3
-    momentum: 0.9
+  hiddens:
+    - 1024
+    - 512
+    - pi: [256, 256]
+    - vf: [256, 256]
+  explore_kwargs:
+    start: 1
+    end: 0.1
+    end_fraction: 0.3
 
 # test env
 VNALL-v0:
@@ -39,19 +45,14 @@ VNALL-v0:
   num_tasks: 5
   num_steps: 250
   epochs: 5
-  n_eval_episodes: 5
+  n_eval_episodes: 20
   minibatch_size: 64
-  meta_lr: !!float 3e-4
   hiddens: [200, 200, 200, 100, 50]
   run_name: 'vnall'
   seed: null
   <<: *common-variables
-  # mamlpp params
-  # inner_steps: 5
-  # msl_epoch: 10 # multi step loss
-  # min_lr: !!float 1e-5
   inner_optim_kwargs:
-    lr: !!float 1e-3
+    lr: !!float 7e-5
     momentum: 0.9
 
 MiniFAANG-v0:

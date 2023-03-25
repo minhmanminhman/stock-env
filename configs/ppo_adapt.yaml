@@ -5,21 +5,31 @@ common-variables: &common-variables
   clip_range_vf: 0.2
   vf_coef: 0.5
   ent_coef: 0.01
-  max_grad_norm: 5
+  max_grad_norm: 2
   normalize_advantage: True
   target_kl: null
 
 VNALL-v0:
   num_envs: 4
   num_steps: 250
-  total_timesteps: 10000
-  n_eval_episodes: 20
-  minibatch_size: 32
-  gradient_steps: 10
-  learning_rate: !!float 1e-3
+  total_timesteps: 20000
+  n_eval_episodes: 10
+  minibatch_size: 500
+  gradient_steps: 3
+  learning_rate: !!float 7e-5
   is_timeout: True
-  evaluate_freq: 5
+  evaluate_freq: 1
   run_name: 'adapt_SSI'
+  log_folder: 'log/adapt_evaluation_M'
+  model_folder: 'model/adapt_evaluation_M'
   task: 'SSI'
-  hiddens: [200, 200, 200, 100, 50]
+  hiddens:
+    - 1024
+    - 512
+    - pi: [256, 256]
+    - vf: [256, 256]
+  explore_kwargs:
+    start: 1
+    end: 0.01
+    end_fraction: 0.1
   <<: *common-variables

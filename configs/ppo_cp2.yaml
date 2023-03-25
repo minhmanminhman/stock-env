@@ -106,7 +106,7 @@ VNALL-v0:
     - pi: [256, 256]
     - vf: [256, 256]
   explore_kwargs:
-    start: 0
-    end: 0
-    end_fraction: 0
+    start: 1
+    end: 0.01
+    end_fraction: 0.2
   <<: *common-variables
